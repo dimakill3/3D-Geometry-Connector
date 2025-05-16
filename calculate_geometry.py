@@ -2,7 +2,7 @@ from typing import List
 import bpy
 import bmesh
 from collections import deque
-from mathutils import Vector
+from mathutils import Vector, Matrix
 from geometry_connector.models import Mesh, Face, Edge
 
 
@@ -19,6 +19,8 @@ class CalculateGeometry:
         for obj in bpy.data.objects:
             if obj.type != 'MESH' or obj.hide_get():
                 continue
+
+            obj.matrix_world = Matrix.Identity(4)
 
             # Чтение мэша
             mesh = obj.data
@@ -73,14 +75,29 @@ class CalculateGeometry:
                     bm.faces[idx][face_str_layer] = s.encode('utf-8')
 
             # Аппроксимация контуров
-            bmesh.ops.dissolve_limit(
+            # Собираем только внутренние рёбра, у которых ровно две прилегающие грани и угол между ними < threshold
+            internal_edges = []
+            for e in bm.edges:
+                if len(e.link_faces) == 2:
+                    f_a, f_b = e.link_faces
+                    if f_a.normal.angle(f_b.normal) < self.angle_threshold:
+                        internal_edges.append(e)
+
+            # Делаем dissolve только по этим рёбрам
+            bmesh.ops.dissolve_edges(
                 bm,
-                angle_limit = self.angle_threshold,
-                use_dissolve_boundaries = True,
-                verts = bm.verts,
-                edges = bm.edges
+                edges=internal_edges,
+                use_verts=False,  # не растворяем вершины сразу
+                use_face_split=False
             )
-            bmesh.ops.remove_doubles(bm, verts = bm.verts, dist = self.distance_threshold)
+
+            # Объединяем совпадающие вершины:
+            bmesh.ops.remove_doubles(
+                bm,
+                verts=bm.verts,
+                dist=self.distance_threshold
+            )
+            bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
             bm.normal_update()
 
             bm.verts.ensure_lookup_table()
@@ -131,12 +148,14 @@ class CalculateGeometry:
                          for e in f.edges if len(e.link_faces) == 2]
                 avg = sum(dihed) / len(dihed) if dihed else 0
                 face_type = 1 if avg > self.angle_threshold else (-1 if avg < -self.angle_threshold else 0)
+                v0, v1, v2 = f.verts[0].co, f.verts[1].co, f.verts[2].co
+                face_normal = (v1 - v0).cross(v2 - v0).normalized()
                 faces_output.append(Face(
                     new_index = f.index,
                     orig_indices = orig_list,
                     area = f.calc_area(),
                     face_type = face_type,
-                    normal = f.normal,
+                    normal = face_normal,
                     edges = edges_info,
                     vertices = vert_coords
                 ))
@@ -147,9 +166,13 @@ class CalculateGeometry:
                 convex_points = convex_verts,
                 concave_points = concave_verts,
                 flat_points = flat_verts,
+                matrix_world = obj.matrix_world.copy(),
                 faces = faces_output
             ))
 
+            # bm.to_mesh(obj.data)
+            # obj.data.update()
+            # bpy.context.view_layer.update()
             bm.free()
         return meshes
 

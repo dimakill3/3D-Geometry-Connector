@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List, Tuple, Dict
 from geometry_connector.enums import MatchType
-from mathutils import Vector, Quaternion
+from mathutils import Vector, Quaternion, Matrix
 
 
 @dataclass
@@ -30,7 +30,15 @@ class Mesh:
     convex_points: List[int]
     concave_points: List[int]
     flat_points: List[int]
+    matrix_world: Matrix
     faces: List[Face]
+
+    @property
+    def edges(self) -> List[Edge]:
+        result = []
+        for f in self.faces:
+            result.extend(f.edges)
+        return result
 
 
 @dataclass
@@ -40,6 +48,7 @@ class GraphMatch:
     match_type: MatchType
     indices: Tuple[int, int]
     coeff: float
+    edges: List[Tuple[Edge, Edge]] = field(default_factory=list)
 
 
 # Граф: MeshName -> Connected MeshNames -> info about connection
@@ -52,7 +61,7 @@ class MeshGraph:
         self.adj.setdefault(match.mesh2, {}).setdefault(match.mesh1, []).append(
             GraphMatch(match.mesh2, match.mesh1, match.match_type, match.indices, match.coeff)
         )
-        print(f"Добавлено совпадение: {match}")
+        print(f"В граф добавлено совпадение: {match}")
 
 
 @dataclass

@@ -10,6 +10,7 @@ from geometry_connector.graph_utils import sort_graph, build_networks, Network
 from geometry_connector.build_geometry import assemble_network, TransformMatch
 from geometry_connector.build_geometry import apply_transforms_to_scene
 from geometry_connector.models import Mesh
+from geometry_connector.writer import Writer
 
 
 class VIEW3D_PT_build_geometry_panel(bpy.types.Panel):
@@ -49,14 +50,20 @@ class OBJECT_OT_build_geometry(bpy.types.Operator):
     def execute(self, context):
         calculator = CalculateGeometry()
         meshes_list = calculator.calculate()
+        Writer.write_meshes_to_json(meshes_list)
+
         mesh_dict: Dict[str, Mesh] = {m.name: m for m in meshes_list}
 
         graph = build_mesh_graph(meshes_list)
         sorted_graph = sort_graph(graph)
+        Writer.print_graph(sorted_graph)
+
         networks = build_networks(sorted_graph)
         if not networks:
             self.report({'WARNING'}, "No match networks found")
             return {'CANCELLED'}
+
+        Writer.print_networks(networks)
 
         best_network: Network = networks[0]
         transforms: List[TransformMatch] = assemble_network(best_network, mesh_dict)

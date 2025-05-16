@@ -20,7 +20,12 @@ def sort_graph(graph: MeshGraph) -> MeshGraph:
 
 
 def build_networks(graph: MeshGraph) -> List[Network]:
-    # Группируем совпадения по парам мешей
+    # 1) Собираем все имена мешей
+    nodes: Set[str] = set(graph.adj.keys())
+    for nbrs in graph.adj.values():
+        nodes.update(nbrs.keys())
+
+    # 2) Группируем совпадения по парам мешей
     pair_to_matches: Dict[FrozenSet[str], List[GraphMatch]] = {}
     for m1, nbrs in graph.adj.items():
         for m2, matches in nbrs.items():
@@ -28,7 +33,7 @@ def build_networks(graph: MeshGraph) -> List[Network]:
                 key = frozenset((m1, m2))
                 pair_to_matches.setdefault(key, []).extend(matches)
 
-    # Оставляем для каждой пары все FACE и одно лучшее EDGE, сортируем их
+    # 3) Для каждой пары оставляем все FACE и одно лучшее EDGE, сортируем
     for key, matches in pair_to_matches.items():
         face = [m for m in matches if m.match_type == MatchType.FACE]
         edge = [m for m in matches if m.match_type == MatchType.EDGE]
@@ -37,25 +42,70 @@ def build_networks(graph: MeshGraph) -> List[Network]:
         filtered.sort(key=lambda m: (-(m.coeff), 0 if m.match_type == MatchType.FACE else 1))
         pair_to_matches[key] = filtered
 
-    # Формируем все комбинации: по одному совпадению на каждую пару
-    keys = list(pair_to_matches.keys())
-    choices = [pair_to_matches[k] for k in keys]
+    # 4) Порядок пар для рекурсии
+    pairs = list(pair_to_matches.keys())
     networks: List[Network] = []
 
-    for combo in itertools.product(*choices):
-        used_indices: Dict[str, Set[int]] = {}
-        conflict = False
-        for match in combo:
-            for mesh, idx in [(match.mesh1, match.indices[0]), (match.mesh2, match.indices[1])]:
-                if idx in used_indices.get(mesh, set()):
-                    conflict = True
-                    break
-                used_indices.setdefault(mesh, set()).add(idx)
-            if conflict:
-                break
-        if not conflict:
-            networks.append(Network(matches=list(combo)))
+    # Рекурсивный поиск без повторов и без циклов (просто пропускаем matches, если оба меша уже в сети)
+    def dfs(
+            idx: int,
+            current: List[GraphMatch],
+            used_indices: Dict[str, Set[int]],
+            used_meshes: Set[str]
+    ):
+        # если уже собрали все меши — сохраняем сеть и не идём дальше
+        if used_meshes == nodes:
+            networks.append(Network(matches=list(current)))
+            return
+        # если пар больше нет — сохраняем то, что есть
+        if idx >= len(pairs):
+            networks.append(Network(matches=list(current)))
+            return
 
-    # Сортируем сети по сумме coeff (весу)
-    networks.sort(key=lambda net: net.weight, reverse=True)
+        key = pairs[idx]
+        for match in pair_to_matches[key]:
+            m1, m2 = match.mesh1, match.mesh2
+            i1, i2 = match.indices
+
+            # 1) пропускаем, если оба меша уже в сети
+            if m1 in used_meshes and m2 in used_meshes:
+                continue
+
+            # 2) пропускаем конфликт по индексам
+            if i1 in used_indices.get(m1, set()) or i2 in used_indices.get(m2, set()):
+                continue
+
+            # выбираем этот матч
+            used_indices.setdefault(m1, set()).add(i1)
+            used_indices.setdefault(m2, set()).add(i2)
+            added1 = m1 not in used_meshes
+            added2 = m2 not in used_meshes
+            if added1: used_meshes.add(m1)
+            if added2: used_meshes.add(m2)
+            current.append(match)
+
+            # рекурсивно идём к следующей паре
+            dfs(idx + 1, current, used_indices, used_meshes)
+
+            # откатываем выбор
+            current.pop()
+            used_indices[m1].remove(i1)
+            used_indices[m2].remove(i2)
+            if added1: used_meshes.remove(m1)
+            if added2: used_meshes.remove(m2)
+
+        # 3) Также пробуем *не* брать ни одного совпадения из этой пары
+        dfs(idx + 1, current, used_indices, used_meshes)
+
+    # старт рекурсии
+    dfs(0, [], {}, set())
+
+    # 5) Сортировка по числу FACE и весу
+    networks.sort(
+        key=lambda net: (
+            sum(1 for m in net.matches if m.match_type == MatchType.FACE),
+            net.weight
+        ),
+        reverse=True
+    )
     return networks

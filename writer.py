@@ -1,7 +1,8 @@
 import json
 from typing import List
-from geometry_connector.models import Mesh, MeshGraph
+from geometry_connector.models import Mesh, MeshGraph, Network
 from geometry_connector.constants import JSON_PATH
+
 
 class Writer:
     @staticmethod
@@ -14,6 +15,7 @@ class Writer:
                 'convex_points': m.convex_points,
                 'concave_points': m.concave_points,
                 'flat_points': m.flat_points,
+                'matrix_world': [list(row) for row in m.matrix_world],
                 'faces': [
                     {
                         'new_index': f.new_index,
@@ -40,6 +42,7 @@ class Writer:
             json.dump(data, f, indent = 4)
         print(f"Параметры Mesh записаны в файл: {filepath}")
 
+
     @staticmethod
     def print_graph(graph: MeshGraph):
         print("Graph matches:")
@@ -60,3 +63,19 @@ class Writer:
         print("\nВсего узлов:", len(graph.adj))
         total_edges = sum(len(v) for d in graph.adj.values() for v in d.values()) // 2
         print("Всего связей:", total_edges)
+
+
+    @staticmethod
+    def print_networks(networks: List[Network]):
+        if not networks:
+            print("No networks to display.")
+            return
+
+        for i, net in enumerate(networks, start=1):
+            print(f"\nNetwork {i}: weight = {net.weight:.3f}")
+            for match in net.matches:
+                mt = match.match_type.name
+                m1, m2 = match.mesh1, match.mesh2
+                idx1, idx2 = match.indices
+                coeff = match.coeff
+                print(f"  - {mt}: {m1}[{idx1}] ↔ {m2}[{idx2}], coeff = {coeff:.3f}")

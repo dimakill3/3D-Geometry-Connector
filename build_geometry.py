@@ -1,4 +1,5 @@
 ﻿from typing import Dict, List, Tuple
+from geometry_connector.enums import MatchType
 from geometry_connector.models import Network, Mesh, TransformMatch, Face, Edge
 from mathutils import Quaternion, Vector
 import bpy
@@ -7,17 +8,14 @@ from mathutils import Matrix
 
 def assemble_network(network: Network, meshes: Dict[str, Mesh]) -> List[TransformMatch]:
     transforms: List[TransformMatch] = []
-    # Сохраняем текущие трансформы для мешей
     placed: Dict[str, Tuple[Quaternion, Vector]] = {}
 
-    # Берём первый меш как базовый: без трансформации
-    first_match = network.matches[0]
-    base_mesh = first_match.mesh1
-    placed[base_mesh] = (Quaternion(), Vector((0, 0, 0)))
+    # первая точка — без трансформации
+    first = network.matches[0]
+    placed[first.mesh1] = (Quaternion(), Vector((0, 0, 0)))
 
-    # Для каждого совпадения в сети
     for match in network.matches:
-        # Определяем, какая из пар уже расположена
+        # ищем «непомещённый» меш
         if match.mesh1 in placed and match.mesh2 not in placed:
             src, dst = match.mesh2, match.mesh1
             idx_src, idx_dst = match.indices[1], match.indices[0]
@@ -25,40 +23,72 @@ def assemble_network(network: Network, meshes: Dict[str, Mesh]) -> List[Transfor
             src, dst = match.mesh1, match.mesh2
             idx_src, idx_dst = match.indices[0], match.indices[1]
         else:
-            # либо оба уже размещены, либо ни один — пропускаем
             continue
 
-        # Получаем геометрию граней/рёбер
-        face_or_edge_src = meshes[src].faces[idx_src]
-        face_or_edge_dst = meshes[dst].faces[idx_dst]
+        # получаем объекты Face или Edge
+        if match.match_type == MatchType.FACE:
+            fe_src = meshes[src].faces[idx_src]
+            fe_dst = meshes[dst].faces[idx_dst]
+        else:
+            fe_src = meshes[src].edges[idx_src]
+            fe_dst = meshes[dst].edges[idx_dst]
 
-        # Вычисляем центры и нормали граней (или направл. вектора ребра)
-        def centroid_and_dir(fe: Face or Edge):
-            verts = fe.vertices
-            pts = [Vector(v) for v in verts]
+        # рассчитываем центр и «направление» (нормаль или вектор ребра) в мировых координатах
+        def centroid_and_dir(fe, world_m: Matrix):
+            pts = [world_m @ Vector(v) for v in fe.vertices]
             center = sum(pts, Vector()) / len(pts)
-            if isinstance(fe, Face):
-                direction = fe.normal.normalized()
+            if match.match_type == MatchType.FACE:
+                # мировая нормаль
+                normal = (world_m.to_3x3() @ fe.normal).normalized()
+                return center, normal
             else:
-                direction = (pts[1] - pts[0]).normalized()
-            return center, direction
+                # направление ребра
+                return center, (pts[1] - pts[0]).normalized()
 
-        c_src, dir_src = centroid_and_dir(face_or_edge_src)
-        c_dst, dir_dst = centroid_and_dir(face_or_edge_dst)
+        c_src, dir_src = centroid_and_dir(fe_src, meshes[src].matrix_world)
+        c_dst, dir_dst = centroid_and_dir(fe_dst, meshes[dst].matrix_world)
 
-        # Находим кватернион поворота, выравнивающий src → dst
-        q = dir_src.rotation_difference(dir_dst)
+        # построим кватернион поворота
+        if match.match_type == MatchType.FACE:
+            # хотим n_src → –n_dst
+            q1 = dir_src.rotation_difference(-dir_dst)
 
-        # Вычисляем перемещение: после поворота центр src должен лечь в центр dst
+            # берем заранее найденные в GraphMatch пары рёбер
+            matched_edges = match.edges
+
+            if matched_edges:
+                # уточняем ориентацию вокруг нормали
+                e1, e2 = matched_edges[0]
+                # мировой вектор ребра после q1
+                p1 = [meshes[src].matrix_world @ Vector(v) for v in e1.vertices]
+                v1 = (p1[1] - p1[0]).normalized()
+                v1 = (q1 @ v1).normalized()
+                # мировой вектор цели
+                p2 = [meshes[dst].matrix_world @ Vector(v) for v in e2.vertices]
+                v2 = (p2[1] - p2[0]).normalized()
+                # вращаем вокруг –dir_dst
+                axis = -dir_dst
+                angle = v1.angle(v2)
+                sign = 1 if axis.dot(v1.cross(v2)) > 0 else -1
+                q2 = Quaternion(axis, sign * angle)
+                q = q2 @ q1
+            else:
+                q = q1
+        else:
+            # для ребра — обычное выравнивание
+            q = dir_src.rotation_difference(dir_dst)
+
+        # смещение так, чтобы центр src лег в центр dst
         t = c_dst - (q @ c_src)
 
-        # Учитываем уже применённые трансформы к dst (или src)
+        # комбинируем с уже поставленным dst
         q_base, t_base = placed[dst]
         q_net = q_base @ q
         t_net = q_base @ t + t_base
 
-        # Сохраняем трансформ для src
+        # сохраняем и сразу применяем в локальной копии
         placed[src] = (q_net, t_net)
+        meshes[src].matrix_world = Matrix.Translation(t_net) @ q_net.to_matrix().to_4x4()
         transforms.append(TransformMatch(match=match, rotation=q_net, translation=t_net))
 
     return transforms
