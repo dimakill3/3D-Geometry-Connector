@@ -1,6 +1,3 @@
-from geometry_connector.calculate_geometry import CalculateGeometry
-from geometry_connector.writer import Writer
-
 bl_info = {
     "name": "Geometry Resolver",
     "author": "Me",
@@ -11,13 +8,17 @@ bl_info = {
     "category": "Development",
 }
 
+
+from . import ui_panel
+
+
 def register():
-    calculator = CalculateGeometry()
-    data = calculator.calculate()
-    Writer.write_meshes_to_json(data)
+    ui_panel.register()
+
 
 def unregister():
-    pass
+    ui_panel.unregister()
+
 
 if __name__ == "__main__":
     register()

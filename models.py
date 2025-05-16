@@ -1,7 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Tuple, Dict
 from geometry_connector.enums import MatchType
-from mathutils import Vector
+from mathutils import Vector, Quaternion
 
 
 @dataclass
@@ -53,3 +53,20 @@ class MeshGraph:
             GraphMatch(match.mesh2, match.mesh1, match.match_type, match.indices, match.coeff)
         )
         print(f"Добавлено совпадение: {match}")
+
+
+@dataclass
+class Network:
+    matches: List[GraphMatch]
+    weight: float = field(init = False)
+
+    def __post_init__(self):
+        # Считаем вес как сумму coeff всех совпадений
+        self.weight = sum(m.coeff for m in self.matches)
+
+
+@dataclass
+class TransformMatch:
+    match: GraphMatch
+    rotation: Quaternion
+    translation: Vector

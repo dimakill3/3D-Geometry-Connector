@@ -1,15 +1,18 @@
 ﻿from typing import List, Tuple
-
-from geometry_connector import math_utils, Writer
+from geometry_connector import math_utils
 from geometry_connector.enums import MatchType
 from geometry_connector.models import GraphMatch, Face, Edge, Mesh, MeshGraph
 from geometry_connector.reader import JsonMeshReader
-from geometry_connector.constants import AREA_THRESHOLD, EDGE_THRESHOLD, MIN_MATCH_COEFF, AREA_PENALTY, EDGE_PENALTY, NORMAL_PENALTY, CONNECTED_EDGE_ANGLE_THRESHOLD
+from geometry_connector.constants import MIN_MATCH_COEFF, AREA_PENALTY, EDGE_PENALTY, NORMAL_PENALTY
+from geometry_connector.writer import Writer
 from mathutils import Vector, Matrix
+import bpy
 
 
 # Сравнение нормалей граней с учётом выравнивания совпавших рёбер
 def compare_normals(f1: Face, f2: Face, matching_edges: List[Tuple[Edge, Edge]]) -> bool:
+    scene = bpy.context.scene
+
     # Собираем пары направляющих векторов для каждого совпавшего ребра
     v1_list = []
     v2_list = []
@@ -46,7 +49,7 @@ def compare_normals(f1: Face, f2: Face, matching_edges: List[Tuple[Edge, Edge]])
     R = M1 @ M2.inverted()
 
     # Проверяем, что все остальные рёбра тоже «станут» параллельны
-    threshold = CONNECTED_EDGE_ANGLE_THRESHOLD
+    threshold = scene.connected_edge_angle_threshold
     for idx, (v1_i, v2_i) in enumerate(zip(v1_list, v2_list)):
         sign_i = 1.0 if v1_i.dot(v2_i) >= 0 else -1.0
         v2o = (v2_i * sign_i).normalized()
@@ -72,6 +75,7 @@ def compare_normals(f1: Face, f2: Face, matching_edges: List[Tuple[Edge, Edge]])
 
 # Построение графа совпадений обломков
 def build_mesh_graph(meshes: List[Mesh]) -> MeshGraph:
+    scene = bpy.context.scene
     graph = MeshGraph()
 
     print("...Поиск совпадений по граням...")
@@ -86,7 +90,7 @@ def build_mesh_graph(meshes: List[Mesh]) -> MeshGraph:
 
                     print(f"Обработка мэша {m1.name}. Грань {f1.new_index}. Грань {f2.new_index}. Площадь... {f1.area} ?? {f2.area}")
                     # Сравниваем площадь
-                    if not math_utils.compare_values(f1.area, f2.area, AREA_THRESHOLD):
+                    if not math_utils.compare_values(f1.area, f2.area, scene.area_threshold):
                         coeff -= AREA_PENALTY
                         print( f"Несоответствие площади!!!")
 
@@ -113,8 +117,8 @@ def build_mesh_graph(meshes: List[Mesh]) -> MeshGraph:
                         for e2 in max_edges:
                             if e2.new_index in used:
                                 continue
-                            print(f"{abs(e1.length - e2.length)} {EDGE_THRESHOLD} {math_utils.compare_values(e1.length, e2.length, EDGE_THRESHOLD)}")
-                            if math_utils.compare_values(e1.length, e2.length, EDGE_THRESHOLD):
+                            print(f"{abs(e1.length - e2.length)} {scene.edge_threshold} {math_utils.compare_values(e1.length, e2.length, scene.edge_threshold)}")
+                            if math_utils.compare_values(e1.length, e2.length, scene.edge_threshold):
                                 used.add(e2.new_index)
                                 if n1 <= n2:
                                     matched_edges.append((e1, e2))
@@ -157,9 +161,9 @@ def build_mesh_graph(meshes: List[Mesh]) -> MeshGraph:
             edges2 = [e for f in m2.faces if f.new_index not in matched_faces for e in f.edges]
             for e1 in edges1:
                 for e2 in edges2:
-                    coeff = 1.0
-                    if not math_utils.compare_values(e1.length, e2.length, EDGE_THRESHOLD):
-                        coeff -= EDGE_PENALTY
+                    max_length = max(e1.length, e2.length)
+                    coeff = 1 - abs(e1.length / max_length - e2.length / max_length)
+
                     if coeff >= MIN_MATCH_COEFF:
                         graph.add_match(GraphMatch(m1.name, m2.name, MatchType.EDGE, (e1.new_index, e2.new_index), coeff))
 

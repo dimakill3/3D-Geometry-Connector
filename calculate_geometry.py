@@ -4,13 +4,14 @@ import bmesh
 from collections import deque
 from mathutils import Vector
 from geometry_connector.models import Mesh, Face, Edge
-from geometry_connector.constants import COPLANAR_ANGLE_THRESHOLD, COPLANAR_DIST_THRESHOLD, CURVATURE_THRESHOLD
+
 
 class CalculateGeometry:
     def __init__(self):
-        self.angle_threshold = COPLANAR_ANGLE_THRESHOLD
-        self.distance_threshold = COPLANAR_DIST_THRESHOLD
-        self.curvature_threshold = CURVATURE_THRESHOLD
+        scene = bpy.context.scene
+        self.angle_threshold = scene.coplanar_angle_threshold
+        self.distance_threshold = scene.coplanar_dist_threshold
+        self.curvature_threshold = scene.curvature_threshold
 
     def calculate(self) -> List[Mesh]:
         meshes = []
