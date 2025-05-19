@@ -51,33 +51,41 @@ class ResolveGeometryButton(bpy.types.Operator):
 
 
     def execute(self, context):
-        calculator = CalculateGeometry()
-        meshes_list = calculator.calculate()
-        Writer.write_meshes_to_json(meshes_list)
+        wm = context.window_manager
+        estimated_steps = 1
+        wm.progress_begin(0, estimated_steps)
 
-        mesh_dict: Dict[str, Mesh] = {m.name: m for m in meshes_list}
+        try:
+            meshes_list = CalculateGeometry().calculate()
+            wm.progress_update(1)
+            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
 
-        graph = build_mesh_graph(meshes_list)
-        sorted_graph = sort_graph(graph)
-        # Writer.print_graph(sorted_graph)
+            # Writer.write_meshes_to_json(meshes_list)
+            mesh_dict: Dict[str, Mesh] = {m.name: m for m in meshes_list}
 
-        networks = build_networks(sorted_graph)
-        if not networks:
-            self.report({'WARNING'}, "No match networks found")
-            return {'CANCELLED'}
+            graph = build_mesh_graph(meshes_list)
+            sorted_graph = sort_graph(graph)
+            # Writer.print_graph(sorted_graph)
 
-        # Writer.print_networks(networks)
+            networks = build_networks(sorted_graph)
+            if not networks:
+                self.report({'WARNING'}, "No match networks found")
+                return {'CANCELLED'}
 
-        best_network: Network = networks[0]
-        transforms: List[TransformMatch] = assemble_network(best_network, mesh_dict)
-        if not transforms:
-            self.report({'WARNING'}, "No transforms could be calculated without conflict")
-            return {'CANCELLED'}
+            # Writer.print_networks(networks)
 
-        apply_transforms_to_scene(transforms)
-        self.report({'INFO'}, f"Geometry built using network:")
-        Writer.print_networks([best_network])
-        return {'FINISHED'}
+            best_network: Network = networks[0]
+            transforms: List[TransformMatch] = assemble_network(best_network, mesh_dict)
+            if not transforms:
+                self.report({'WARNING'}, "No transforms could be calculated without conflict")
+                return {'CANCELLED'}
+
+            apply_transforms_to_scene(transforms)
+            self.report({'INFO'}, f"Geometry built using network:")
+            Writer.print_networks([best_network])
+
+        finally:
+            wm.progress_end()
 
 
 # Значения по умолчанию
