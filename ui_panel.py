@@ -1,8 +1,6 @@
 ﻿import math
-
 import bpy
 from typing import Dict, List
-
 from bpy.props import FloatProperty, IntProperty
 from geometry_connector.calculate_geometry import CalculateGeometry
 from geometry_connector.connect_geometry import build_mesh_graph
@@ -13,17 +11,19 @@ from geometry_connector.models import Mesh
 from geometry_connector.writer import Writer
 
 
-class VIEW3D_PT_build_geometry_panel(bpy.types.Panel):
-    bl_label = "Build Geometry"
-    bl_idname = "VIEW3D_PT_build_geometry"
+class GeometryResolverNPanelBuilder(bpy.types.Panel):
+    bl_label = "Geometry Resolver"
+    bl_idname = "geometry_resolver_n_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'Geometry Resolver'
 
+
     def draw(self, context):
         layout = self.layout
         scene = context.scene
-        # Configurable constants
+
+        # Настраиваемые константы
         layout.label(text="Thresholds:")
         layout.prop(scene, "coplanar_angle_threshold")
         layout.prop(scene, "coplanar_dist_threshold")
@@ -32,20 +32,23 @@ class VIEW3D_PT_build_geometry_panel(bpy.types.Panel):
         layout.prop(scene, "area_threshold")
         layout.prop(scene, "edge_threshold")
         layout.separator()
-        # Build button
-        layout.operator(OBJECT_OT_build_geometry.bl_idname, text="Resolve")
+
+        # Кнопка
+        layout.operator(ResolveGeometryButton.bl_idname, text="Connect Fragments")
         layout.separator()
-        # Connect Variants label and counter
-        layout.label(text="Connect Variants")
+
+        # Переключение возможных вариантов соединения
+        layout.label(text="Connect Variants Swapper")
         row = layout.row(align=True)
         row.prop(scene, "variant_index", text="", emboss=True)
 
 
-class OBJECT_OT_build_geometry(bpy.types.Operator):
-    bl_idname = "geometry.build_geometry"
+class ResolveGeometryButton(bpy.types.Operator):
+    bl_idname = "geometry_resolver_n_panel.resolve_geometry"
     bl_label = "Build Geometry"
-    bl_description = "Calculate and assemble geometry fragments"
+    bl_description = "Calculate and Assemble geometry fragments"
     bl_options = {'REGISTER', 'UNDO'}
+
 
     def execute(self, context):
         calculator = CalculateGeometry()
@@ -56,14 +59,14 @@ class OBJECT_OT_build_geometry(bpy.types.Operator):
 
         graph = build_mesh_graph(meshes_list)
         sorted_graph = sort_graph(graph)
-        Writer.print_graph(sorted_graph)
+        # Writer.print_graph(sorted_graph)
 
         networks = build_networks(sorted_graph)
         if not networks:
             self.report({'WARNING'}, "No match networks found")
             return {'CANCELLED'}
 
-        Writer.print_networks(networks)
+        # Writer.print_networks(networks)
 
         best_network: Network = networks[0]
         transforms: List[TransformMatch] = assemble_network(best_network, mesh_dict)
@@ -71,27 +74,27 @@ class OBJECT_OT_build_geometry(bpy.types.Operator):
             self.report({'WARNING'}, "No transforms could be calculated without conflict")
             return {'CANCELLED'}
 
-        base_name = best_network.matches[0].mesh1
-        apply_transforms_to_scene(transforms, base_name)
-        self.report({'INFO'}, f"Geometry built using network weight {best_network.weight:.3f}")
+        apply_transforms_to_scene(transforms)
+        self.report({'INFO'}, f"Geometry built using network:")
+        Writer.print_networks([best_network])
         return {'FINISHED'}
 
 
-DEFAULT_COPLANAR_ANGLE_THRESHOLD = math.radians(2.0)
-DEFAULT_COPLANAR_DIST_THRESHOLD = 0.004
-DEFAULT_CURVATURE_THRESHOLD = 0.01
-DEFAULT_CONNECTED_EDGE_ANGLE_THRESHOLD = math.radians(5.0)
-DEFAULT_AREA_THRESHOLD = 0.015
-DEFAULT_EDGE_THRESHOLD = 0.005
+# Значения по умолчанию
+DEFAULT_COPLANAR_ANGLE_THRESHOLD = math.radians(2.0)                    # Угол, до которого грани считаются компланарными
+DEFAULT_COPLANAR_DIST_THRESHOLD = 0.004                                 # Дистанция, до которой грани считаются компланарными
+DEFAULT_CURVATURE_THRESHOLD = 0.01                                      # Величина отклонения кривизны
+DEFAULT_CONNECTED_EDGE_ANGLE_THRESHOLD = math.radians(5.0)              # Минимальный итоговый коэффициент
+DEFAULT_AREA_THRESHOLD = 0.015                                          # Допустимая разница площадей для совпадения
+DEFAULT_EDGE_THRESHOLD = 0.005                                          # Допустимая разница для длин рёбер
 
-classes = [VIEW3D_PT_build_geometry_panel, OBJECT_OT_build_geometry]
+classes = [GeometryResolverNPanelBuilder, ResolveGeometryButton]
 
 
 def register():
-    # Register scene properties for constants
+    # Регистрация параметров панели
     bpy.types.Scene.coplanar_angle_threshold = FloatProperty(
         subtype='ANGLE',
-        precision=5,
         name="Coplanar Angle Threshold",
         default=DEFAULT_COPLANAR_ANGLE_THRESHOLD,
         description="Angle below which faces are considered coplanar"
@@ -134,17 +137,17 @@ def register():
         description="Index of shown connect variant"
     )
 
-    # Register classes
+    # Регистрация классов
     for cls in classes:
         bpy.utils.register_class(cls)
 
 
 def unregister():
-    # Unregister classes
+    # Выгрузка зарегистрированных классов
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 
-    # Remove scene properties
+    # Выгрузка параметров панели
     del bpy.types.Scene.coplanar_angle_threshold
     del bpy.types.Scene.coplanar_dist_threshold
     del bpy.types.Scene.curvature_threshold

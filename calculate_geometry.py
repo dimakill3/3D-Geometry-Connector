@@ -5,6 +5,9 @@ from collections import deque
 from mathutils import Vector, Matrix
 from geometry_connector.models import Mesh, Face, Edge
 
+ORIG_INDICES = "orig_indices"
+ORIG_INDEX = "orig_index"
+
 
 class CalculateGeometry:
     def __init__(self):
@@ -13,90 +16,89 @@ class CalculateGeometry:
         self.distance_threshold = scene.coplanar_dist_threshold
         self.curvature_threshold = scene.curvature_threshold
 
+
     def calculate(self) -> List[Mesh]:
-        meshes = []
+        result_meshes: List[Mesh] = []
 
         for obj in bpy.data.objects:
-            if obj.type != 'MESH' or obj.hide_get():
+            if obj.type != 'MESH' or not obj.visible_get():
                 continue
 
-            obj.matrix_world = Matrix.Identity(4)
-
-            # Чтение мэша
+            # region Чтение мэша
             mesh = obj.data
             bm = bmesh.new()
             bm.from_mesh(mesh)
+
             bm.verts.ensure_lookup_table()
             bm.faces.ensure_lookup_table()
+            bm.edges.ensure_lookup_table()
 
-            # Слои для меток
-            face_int_layer = bm.faces.layers.int.new("orig_index")
-            face_str_layer = bm.faces.layers.string.new("orig_indices")
-            edge_int_layer = bm.edges.layers.int.new("orig_index")
+            # endregion
 
-            # Заполняем int-слой
-            for f in bm.faces:
-                f[face_int_layer] = f.index
-            for e in bm.edges:
-                e[edge_int_layer] = e.index
+            # Кэшируем переиспользуемые данные
+            face_normals = [f.normal.copy() for f in bm.faces]
+            face_centroids = [f.calc_center_median().copy() for f in bm.faces]
 
-            # Группируем копланарные грани
-            neighbors = {f.index: [] for f in bm.faces}
-            for f in bm.faces:
+            # region Создаем словарь смежности граней, чтобы потом была возможность вернуться от аппроксимации к дефолтной модели
+
+            neighbors = {i: [] for i in range(len(bm.faces))}
+            for f_idx, f in enumerate(bm.faces):
+                n1 = face_normals[f_idx]
+                d1 = n1.dot(face_centroids[f_idx])
                 for e in f.edges:
                     for g in e.link_faces:
-                        if g == f: continue
-                        if f.normal.angle(g.normal) < self.angle_threshold:
-                            d1 = f.normal.dot(f.calc_center_median())
-                            d2 = g.normal.dot(g.calc_center_median())
+                        g_idx = g.index
+                        if g_idx <= f_idx:
+                            continue
+                        n2 = face_normals[g_idx]
+                        if n1.angle(n2) < self.angle_threshold:
+                            d2 = n2.dot(face_centroids[g_idx])
                             if abs(d1 - d2) < self.distance_threshold:
-                                neighbors[f.index].append(g.index)
+                                neighbors[f_idx].append(g_idx)
+                                neighbors[g_idx].append(f_idx)
 
+            # Группировка компланарных граней
             visited = set()
-            groups = []
+            coplanar_groups = []
             for start in neighbors:
-                if start in visited: continue
-                queue = deque([start])
+                if start in visited:
+                    continue
+                stack = [start]
                 comp = []
-                while queue:
-                    idx = queue.popleft()
-                    if idx in visited: continue
-                    visited.add(idx)
-                    comp.append(idx)
-                    for nbr in neighbors[idx]:
+                while stack:
+                    curr = stack.pop()
+                    if curr in visited:
+                        continue
+                    visited.add(curr)
+                    comp.append(curr)
+                    for nbr in neighbors[curr]:
                         if nbr not in visited:
-                            queue.append(nbr)
-                groups.append(comp)
+                            stack.append(nbr)
+                coplanar_groups.append(comp)
 
-            # Запоминаем индексы
-            for grp in groups:
-                s = ",".join(str(idx) for idx in grp)
-                for idx in grp:
-                    bm.faces[idx][face_str_layer] = s.encode('utf-8')
+            # endregion
 
-            # Аппроксимация контуров
+            # region Аппроксимация контуров
+
             # Собираем только внутренние рёбра, у которых ровно две прилегающие грани и угол между ними < threshold
-            internal_edges = []
-            for e in bm.edges:
-                if len(e.link_faces) == 2:
-                    f_a, f_b = e.link_faces
-                    if f_a.normal.angle(f_b.normal) < self.angle_threshold:
-                        internal_edges.append(e)
+            internal_edges = [e for e in bm.edges
+                              if len(e.link_faces) == 2
+                              and e.link_faces[0].normal.angle(e.link_faces[1].normal) < self.angle_threshold]
 
-            # Делаем dissolve только по этим рёбрам
+            # Производим dissolve по этим рёбрам
             bmesh.ops.dissolve_edges(
                 bm,
                 edges=internal_edges,
-                use_verts=False,  # не растворяем вершины сразу
-                use_face_split=False
+                use_verts=True,
+                use_face_split=False,
             )
 
-            # Объединяем совпадающие вершины:
             bmesh.ops.remove_doubles(
                 bm,
                 verts=bm.verts,
-                dist=self.distance_threshold
-            )
+                dist=self.distance_threshold)
+
+            # Пересчитываем нормали
             bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
             bm.normal_update()
 
@@ -104,77 +106,86 @@ class CalculateGeometry:
             bm.faces.ensure_lookup_table()
             bm.edges.ensure_lookup_table()
 
-            # Классификация вершин по кривизне
-            convex_verts, concave_verts, flat_verts = [], [], []
-            for v in bm.verts:
-                norms = [f.normal for f in v.link_faces]
-                if not norms: continue
-                avg = sum(norms, Vector()) / len(norms)
-                avg.normalize()
-                d = 1.0 - v.normal.dot(avg)
-                if d > self.curvature_threshold:
-                    convex_verts.append(v.index)
-                elif d < -self.curvature_threshold:
-                    concave_verts.append(v.index)
-                else:
-                    flat_verts.append(v.index)
+            # endregion
 
-            # Размер меша
+            # region Сбор данных
+
+            # Классификация вершин по кривизне
+            convex_inds, concave_inds, flat_inds = [], [], []
+            for v in bm.verts:
+                normals = [f.normal for f in v.link_faces]
+                if not normals:
+                    continue
+                avg = sum(normals, Vector()) / len(normals)
+                avg.normalize()
+                deviation = 1.0 - v.normal.dot(avg)
+                if deviation > self.curvature_threshold:
+                    convex_inds.append(v.index)
+                elif deviation < -self.curvature_threshold:
+                    concave_inds.append(v.index)
+                else:
+                    flat_inds.append(v.index)
+
+            # Получаем размеры меша
             coords = [v.co for v in bm.verts]
             if coords:
-                xs, ys, zs = zip(*coords)
+                xs = [c.x for c in coords]; ys = [c.y for c in coords]; zs = [c.z for c in coords]
                 size = [max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs)]
             else:
-                size = [0, 0, 0]
+                size = [0.0, 0.0, 0.0]
 
-            # Собираем информацию о гранях
-            faces_output = []
+            # Собираем данные граней и ребер
+            faces_out: List[Face] = []
+            group_map = {idx: grp for grp in coplanar_groups for idx in grp}
             for f in bm.faces:
+                idx = f.index
+                orig_group = group_map.get(idx, [idx])
                 vert_coords = [[v.co.x, v.co.y, v.co.z] for v in f.verts]
-                orig = bm.faces.layers.string["orig_indices"]
-                orig_str = f[face_str_layer].decode('utf-8') if f[face_str_layer] else str(f[face_int_layer])
-                orig_list = [int(i) for i in orig_str.split(',')]
-                edges_info = []
-                for e in f.edges:
-                    orig_e = e[edge_int_layer]
-                    edge_coords = [[v.co.x, v.co.y, v.co.z] for v in e.verts]
-                    edges_info.append(Edge(
-                        new_index = e.index,
-                        orig_indices = [orig_e],
-                        length = e.calc_length(),
-                        vertices = edge_coords
+
+                edges_list: List[Edge] = []
+                linked_edges = f.edges[:]
+                for e in linked_edges:
+                    edge_verts = [[v.co.x, v.co.y, v.co.z] for v in e.verts]
+                    edges_list.append(Edge(
+                        new_index=e.index,
+                        orig_indices=[e.index],
+                        length=e.calc_length(),
+                        vertices=edge_verts
                     ))
-                dihed = [e.link_faces[0].normal.angle(e.link_faces[1].normal)
-                         for e in f.edges if len(e.link_faces) == 2]
-                avg = sum(dihed) / len(dihed) if dihed else 0
-                face_type = 1 if avg > self.angle_threshold else (-1 if avg < -self.angle_threshold else 0)
-                v0, v1, v2 = f.verts[0].co, f.verts[1].co, f.verts[2].co
-                face_normal = (v1 - v0).cross(v2 - v0).normalized()
-                faces_output.append(Face(
-                    new_index = f.index,
-                    orig_indices = orig_list,
-                    area = f.calc_area(),
-                    face_type = face_type,
-                    normal = face_normal,
-                    edges = edges_info,
-                    vertices = vert_coords
+
+                # Определяем тип грани по среднему диэдральному
+                dihedral_angles = [e.link_faces[0].normal.angle(e.link_faces[1].normal)
+                                   for e in linked_edges if len(e.link_faces) == 2]
+                avg_dihedral = sum(dihedral_angles) / len(dihedral_angles) if dihedral_angles else 0.0
+                face_type = 1 if avg_dihedral > self.angle_threshold else (
+                    -1 if avg_dihedral < -self.angle_threshold else 0)
+
+                normal = (f.verts[1].co - f.verts[0].co).cross(f.verts[2].co - f.verts[0].co).normalized()
+
+                faces_out.append(Face(
+                    new_index=idx,
+                    orig_indices=orig_group,
+                    area=f.calc_area(),
+                    face_type=face_type,
+                    normal=normal,
+                    edges=edges_list,
+                    vertices=vert_coords
                 ))
 
-            meshes.append(Mesh(
-                name = obj.name,
-                size = size,
-                convex_points = convex_verts,
-                concave_points = concave_verts,
-                flat_points = flat_verts,
-                matrix_world = obj.matrix_world.copy(),
-                faces = faces_output
+            result_meshes.append(Mesh(
+                name=obj.name,
+                size=size,
+                convex_points=convex_inds,
+                concave_points=concave_inds,
+                flat_points=flat_inds,
+                matrix_world=obj.matrix_world.copy(),
+                faces=faces_out
             ))
 
-            # bm.to_mesh(obj.data)
-            # obj.data.update()
-            # bpy.context.view_layer.update()
+            # endregion
+
             bm.free()
-        return meshes
+        return result_meshes
 
 if __name__ == '__main__':
     CalculateGeometry()

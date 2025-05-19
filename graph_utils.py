@@ -1,5 +1,4 @@
-﻿import itertools
-from typing import List, Dict, Set, FrozenSet
+﻿from typing import List, Dict, Set, FrozenSet
 from geometry_connector.enums import MatchType
 from geometry_connector.models import MeshGraph, GraphMatch, Network
 import copy
@@ -20,87 +19,76 @@ def sort_graph(graph: MeshGraph) -> MeshGraph:
 
 
 def build_networks(graph: MeshGraph) -> List[Network]:
-    # 1) Собираем все имена мешей
-    nodes: Set[str] = set(graph.adj.keys())
-    for nbrs in graph.adj.values():
+    adj = graph.adj
+    # Собираем все имена мешей
+    nodes: Set[str] = set(adj.keys())
+    for nbrs in adj.values():
         nodes.update(nbrs.keys())
 
-    # 2) Группируем совпадения по парам мешей
-    pair_to_matches: Dict[FrozenSet[str], List[GraphMatch]] = {}
-    for m1, nbrs in graph.adj.items():
+    # Группируем совпадения по парам мешей
+    pair_to_matches: Dict[frozenset, List[GraphMatch]] = {}
+    for m1, nbrs in adj.items():
         for m2, matches in nbrs.items():
             if m1 < m2:
                 key = frozenset((m1, m2))
                 pair_to_matches.setdefault(key, []).extend(matches)
 
-    # 3) Для каждой пары оставляем все FACE и одно лучшее EDGE, сортируем
+    # Оставляем все FACE и лучший EDGE, затем сортируем
     for key, matches in pair_to_matches.items():
-        face = [m for m in matches if m.match_type == MatchType.FACE]
-        edge = [m for m in matches if m.match_type == MatchType.EDGE]
-        best_edge = max(edge, key=lambda m: m.coeff) if edge else None
-        filtered = face + ([best_edge] if best_edge else [])
-        filtered.sort(key=lambda m: (-(m.coeff), 0 if m.match_type == MatchType.FACE else 1))
+        face_ms = [m for m in matches if m.match_type == MatchType.FACE]
+        edge_ms = [m for m in matches if m.match_type == MatchType.EDGE]
+        best_edge = max(edge_ms, key=lambda m: m.coeff) if edge_ms else None
+        filtered = face_ms + ([best_edge] if best_edge else [])
+        filtered.sort(key=lambda m: (-m.coeff, 0 if m.match_type == MatchType.FACE else 1))
         pair_to_matches[key] = filtered
 
-    # 4) Порядок пар для рекурсии
     pairs = list(pair_to_matches.keys())
     networks: List[Network] = []
 
-    # Рекурсивный поиск без повторов и без циклов (просто пропускаем matches, если оба меша уже в сети)
-    def dfs(
-            idx: int,
-            current: List[GraphMatch],
-            used_indices: Dict[str, Set[int]],
-            used_meshes: Set[str]
-    ):
-        # если уже собрали все меши — сохраняем сеть и не идём дальше
+    # Рекурсивный DFS
+    def dfs(idx, current, used_idx, used_meshes):
+        # Если все меши — сохраняем сеть (только если есть FACE)
         if used_meshes == nodes:
-            networks.append(Network(matches=list(current)))
+            if any(m.match_type == MatchType.FACE for m in current):
+                networks.append(Network(matches=list(current)))
             return
-        # если пар больше нет — сохраняем то, что есть
         if idx >= len(pairs):
-            networks.append(Network(matches=list(current)))
             return
 
         key = pairs[idx]
-        for match in pair_to_matches[key]:
-            m1, m2 = match.mesh1, match.mesh2
-            i1, i2 = match.indices
+        for m in pair_to_matches[key]:
+            a, b = m.mesh1, m.mesh2
+            i_a, i_b = m.indices
 
-            # 1) пропускаем, если оба меша уже в сети
-            if m1 in used_meshes and m2 in used_meshes:
+            if a in used_meshes and b in used_meshes:
+                continue
+            if i_a in used_idx.get(a, ()) or i_b in used_idx.get(b, ()):
                 continue
 
-            # 2) пропускаем конфликт по индексам
-            if i1 in used_indices.get(m1, set()) or i2 in used_indices.get(m2, set()):
-                continue
+            # «выбираем» матч
+            used_idx.setdefault(a, set()).add(i_a)
+            used_idx.setdefault(b, set()).add(i_b)
+            added_a = a not in used_meshes
+            added_b = b not in used_meshes
+            if added_a: used_meshes.add(a)
+            if added_b: used_meshes.add(b)
+            current.append(m)
 
-            # выбираем этот матч
-            used_indices.setdefault(m1, set()).add(i1)
-            used_indices.setdefault(m2, set()).add(i2)
-            added1 = m1 not in used_meshes
-            added2 = m2 not in used_meshes
-            if added1: used_meshes.add(m1)
-            if added2: used_meshes.add(m2)
-            current.append(match)
+            dfs(idx + 1, current, used_idx, used_meshes)
 
-            # рекурсивно идём к следующей паре
-            dfs(idx + 1, current, used_indices, used_meshes)
-
-            # откатываем выбор
+            # «откатываем»
             current.pop()
-            used_indices[m1].remove(i1)
-            used_indices[m2].remove(i2)
-            if added1: used_meshes.remove(m1)
-            if added2: used_meshes.remove(m2)
+            used_idx[a].remove(i_a)
+            used_idx[b].remove(i_b)
+            if added_a: used_meshes.remove(a)
+            if added_b: used_meshes.remove(b)
 
-        # 3) Также пробуем *не* брать ни одного совпадения из этой пары
-        dfs(idx + 1, current, used_indices, used_meshes)
+        # Ветка без матчей из этой пары
+        dfs(idx + 1, current, used_idx, used_meshes)
 
-    # старт рекурсии
     dfs(0, [], {}, set())
 
-    # 5) Сортировка по числу FACE и весу
+    # Финальная сортировка по количеству FACE и весу
     networks.sort(
         key=lambda net: (
             sum(1 for m in net.matches if m.match_type == MatchType.FACE),

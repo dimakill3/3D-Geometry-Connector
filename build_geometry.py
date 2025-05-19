@@ -1,118 +1,118 @@
-﻿from typing import Dict, List, Tuple
+﻿from typing import Dict, List
+
 from geometry_connector.enums import MatchType
-from geometry_connector.models import Network, Mesh, TransformMatch, Face, Edge
+from geometry_connector.models import Network, Mesh, TransformMatch, GraphMatch
 from mathutils import Quaternion, Vector
 import bpy
 from mathutils import Matrix
 
 
 def assemble_network(network: Network, meshes: Dict[str, Mesh]) -> List[TransformMatch]:
+    matches = network.matches
+    # Кэшируем все исходные матрицы
+    mat_worlds = {name: mesh.matrix_world.copy() for name, mesh in meshes.items()}
+    placed = set()
     transforms: List[TransformMatch] = []
-    placed: Dict[str, Tuple[Quaternion, Vector]] = {}
 
-    # первая точка — без трансформации
-    first = network.matches[0]
-    placed[first.mesh1] = (Quaternion(), Vector((0, 0, 0)))
+    # Базовый меш — первый в первой паре
+    base = matches[0].mesh1
+    placed.add(base)
 
-    for match in network.matches:
-        # ищем «непомещённый» меш
-        if match.mesh1 in placed and match.mesh2 not in placed:
-            src, dst = match.mesh2, match.mesh1
-            idx_src, idx_dst = match.indices[1], match.indices[0]
-        elif match.mesh2 in placed and match.mesh1 not in placed:
-            src, dst = match.mesh1, match.mesh2
-            idx_src, idx_dst = match.indices[0], match.indices[1]
-        else:
-            continue
+    # Повторяем, пока есть что разместить
+    changed = True
+    while changed:
+        changed = False
+        for m in matches:
+            m1, m2 = m.mesh1, m.mesh2
+            # Пропускаем, если оба уже размещены
+            if m1 in placed and m2 in placed:
+                continue
 
-        # получаем объекты Face или Edge
-        if match.match_type == MatchType.FACE:
-            fe_src = meshes[src].faces[idx_src]
-            fe_dst = meshes[dst].faces[idx_dst]
-        else:
-            fe_src = meshes[src].edges[idx_src]
-            fe_dst = meshes[dst].edges[idx_dst]
-
-        # рассчитываем центр и «направление» (нормаль или вектор ребра) в мировых координатах
-        def centroid_and_dir(fe, world_m: Matrix):
-            pts = [world_m @ Vector(v) for v in fe.vertices]
-            center = sum(pts, Vector()) / len(pts)
-            if match.match_type == MatchType.FACE:
-                # мировая нормаль
-                normal = (world_m.to_3x3() @ fe.normal).normalized()
-                return center, normal
+            # Ппределяем src/dst и индексы
+            if m1 in placed:
+                src, dst = m2, m1
+                i_src, i_dst = m.indices[1], m.indices[0]
+                edges = [(e2, e1) for (e1, e2) in m.edges]
+            elif m2 in placed:
+                src, dst = m1, m2
+                i_src, i_dst = m.indices
+                edges = m.edges
             else:
-                # направление ребра
-                return center, (pts[1] - pts[0]).normalized()
+                continue
 
-        c_src, dir_src = centroid_and_dir(fe_src, meshes[src].matrix_world)
-        c_dst, dir_dst = centroid_and_dir(fe_dst, meshes[dst].matrix_world)
+            changed = True
 
-        # построим кватернион поворота
-        if match.match_type == MatchType.FACE:
-            # хотим n_src → –n_dst
-            q1 = dir_src.rotation_difference(-dir_dst)
+            # Вытаскиваем необходимые объекты и матрицы
+            M_src, M_dst = mat_worlds[src], mat_worlds[dst]
+            mesh_src, mesh_dst = meshes[src], meshes[dst]
 
-            # берем заранее найденные в GraphMatch пары рёбер
-            matched_edges = match.edges
-
-            if matched_edges:
-                # уточняем ориентацию вокруг нормали
-                e1, e2 = matched_edges[0]
-                # мировой вектор ребра после q1
-                p1 = [meshes[src].matrix_world @ Vector(v) for v in e1.vertices]
-                v1 = (p1[1] - p1[0]).normalized()
-                v1 = (q1 @ v1).normalized()
-                # мировой вектор цели
-                p2 = [meshes[dst].matrix_world @ Vector(v) for v in e2.vertices]
-                v2 = (p2[1] - p2[0]).normalized()
-                # вращаем вокруг –dir_dst
-                axis = -dir_dst
-                angle = v1.angle(v2)
-                sign = 1 if axis.dot(v1.cross(v2)) > 0 else -1
-                q2 = Quaternion(axis, sign * angle)
-                q = q2 @ q1
+            # Выбор Face или Edge
+            if m.match_type == MatchType.FACE:
+                fe_s = mesh_src.faces[i_src]
+                fe_d = mesh_dst.faces[i_dst]
             else:
-                q = q1
-        else:
-            # для ребра — обычное выравнивание
-            q = dir_src.rotation_difference(dir_dst)
+                fe_s = mesh_src.edges[i_src]
+                fe_d = mesh_dst.edges[i_dst]
 
-        # смещение так, чтобы центр src лег в центр dst
-        t = c_dst - (q @ c_src)
+            # Вспомогательная функция для получения центроида и направления
+            def get_cd(fe, M):
+                pts = [M @ Vector(v) for v in fe.vertices]
+                ctr = sum(pts, Vector()) / len(pts)
+                if hasattr(fe, 'normal'):
+                    nr = (M.to_3x3() @ fe.normal).normalized()
+                    return ctr, nr
+                return ctr, (pts[1] - pts[0]).normalized()
 
-        # комбинируем с уже поставленным dst
-        q_base, t_base = placed[dst]
-        q_net = q_base @ q
-        t_net = q_base @ t + t_base
+            c_src, dir_src = get_cd(fe_s, M_src)
+            c_dst, dir_dst = get_cd(fe_d, M_dst)
 
-        # сохраняем и сразу применяем в локальной копии
-        placed[src] = (q_net, t_net)
-        meshes[src].matrix_world = Matrix.Translation(t_net) @ q_net.to_matrix().to_4x4()
-        transforms.append(TransformMatch(match=match, rotation=q_net, translation=t_net))
+            # Расчёт вращения
+            if m.match_type == MatchType.FACE:
+                q1 = dir_src.rotation_difference(-dir_dst)
+                if edges:
+                    e1, e2 = edges[0]
+                    p1 = [M_src @ Vector(v) for v in e1.vertices]
+                    v1 = (q1 @ (p1[1] - p1[0]).normalized()).normalized()
+                    p2 = [M_dst @ Vector(v) for v in e2.vertices]
+                    v2 = (p2[1] - p2[0]).normalized()
+                    axis = -dir_dst
+                    angle = v1.angle(v2)
+                    sign = 1 if axis.dot(v1.cross(v2)) > 0 else -1
+                    q = Quaternion(axis, sign * angle) @ q1
+                else:
+                    q = q1
+            else:
+                q = dir_src.rotation_difference(dir_dst)
+
+            # Перемещение
+            t = c_dst - (q @ c_src)
+
+            # Новая world-матрица
+            mat_worlds[src] = Matrix.Translation(t) @ q.to_matrix().to_4x4() @ M_src
+
+            # Инвертируем GraphMatch, чтобы трансформ всегда применялся для второго мэша в паре
+            inv = GraphMatch(
+                mesh1=dst,
+                mesh2=src,
+                match_type=m.match_type,
+                indices=(i_dst, i_src),
+                coeff=m.coeff,
+                edges=edges
+            )
+            transforms.append(TransformMatch(match=inv, rotation=q, translation=t))
+            placed.add(src)
 
     return transforms
 
 
-def apply_transforms_to_scene(transforms, base_mesh_name: str):
+def apply_transforms_to_scene(transforms):
     for tm in transforms:
-        # Определяем, к какому мешу относится текущая трансформация
-        if tm.match.mesh1 == base_mesh_name:
-            obj_name = tm.match.mesh2
-        else:
-            obj_name = tm.match.mesh1
-
-        obj = bpy.data.objects.get(obj_name)
+        # Трансформируем всегда mesh2
+        obj = bpy.data.objects.get(tm.match.mesh2)
         if obj is None:
-            print(f"Object '{obj_name}' not found in the scene.")
             continue
 
-        # Строим матрицу трансформации: сначала поворот, затем перенос
+        # Применяем в мировых координатах
         mat_rot = tm.rotation.to_matrix().to_4x4()
         mat_trans = Matrix.Translation(tm.translation)
-        transform_mat = mat_trans @ mat_rot
-
-        # Применяем в мировых координатах
-        obj.matrix_world = transform_mat
-
-    print("Transforms applied.")
+        obj.matrix_world = mat_trans @ mat_rot @ obj.matrix_world
