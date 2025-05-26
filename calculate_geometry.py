@@ -1,15 +1,14 @@
 from typing import List
 import bpy
 import bmesh
-from collections import deque
-from mathutils import Vector, Matrix
+from mathutils import Vector
 from geometry_connector.models import Mesh, Face, Edge
 
 ORIG_INDICES = "orig_indices"
 ORIG_INDEX = "orig_index"
 
 
-class CalculateGeometry:
+class GeometryCalculator:
     def __init__(self):
         scene = bpy.context.scene
         self.angle_threshold = scene.coplanar_angle_threshold
@@ -25,6 +24,7 @@ class CalculateGeometry:
                 continue
 
             # region Чтение мэша
+
             mesh = obj.data
             bm = bmesh.new()
             bm.from_mesh(mesh)
@@ -110,6 +110,14 @@ class CalculateGeometry:
 
             # region Сбор данных
 
+            # Получаем размеры меша
+            coords = [v.co for v in bm.verts]
+            if coords:
+                xs = [c.x for c in coords]; ys = [c.y for c in coords]; zs = [c.z for c in coords]
+                size = [max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs)]
+            else:
+                size = [0.0, 0.0, 0.0]
+
             # Классификация вершин по кривизне
             convex_inds, concave_inds, flat_inds = [], [], []
             for v in bm.verts:
@@ -125,14 +133,6 @@ class CalculateGeometry:
                     concave_inds.append(v.index)
                 else:
                     flat_inds.append(v.index)
-
-            # Получаем размеры меша
-            coords = [v.co for v in bm.verts]
-            if coords:
-                xs = [c.x for c in coords]; ys = [c.y for c in coords]; zs = [c.z for c in coords]
-                size = [max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs)]
-            else:
-                size = [0.0, 0.0, 0.0]
 
             # Собираем данные граней и ребер
             faces_out: List[Face] = []
@@ -186,6 +186,3 @@ class CalculateGeometry:
 
             bm.free()
         return result_meshes
-
-if __name__ == '__main__':
-    CalculateGeometry()

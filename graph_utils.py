@@ -1,4 +1,4 @@
-﻿from typing import List, Dict, Set, FrozenSet
+﻿from typing import List, Dict, Set
 from geometry_connector.enums import MatchType
 from geometry_connector.models import MeshGraph, GraphMatch, Network
 import copy
@@ -97,3 +97,75 @@ def build_networks(graph: MeshGraph) -> List[Network]:
         reverse=True
     )
     return networks
+
+
+def generate_networks(graph: MeshGraph):
+    """
+    Генератор, который по частям выдаёт объекты Network
+    """
+    adj = graph.adj
+
+    # собираем все меши
+    nodes = set(adj.keys())
+    for nbrs in adj.values():
+        nodes |= set(nbrs.keys())
+
+    # предварительно группируем матчи по парам (как раньше)
+    pair_to_matches: Dict[frozenset, List[GraphMatch]] = {}
+    for m1, nbrs in adj.items():
+        for m2, matches in nbrs.items():
+            if m1 < m2:
+                key = frozenset((m1, m2))
+                # здесь по желанию можно оставить только best_face/best_edge
+                pair_to_matches.setdefault(key, []).extend(matches)
+
+    pairs = list(pair_to_matches.keys())
+
+    # рекурсивный dfs, но как генератор
+    def dfs(idx: int,
+            current: List[GraphMatch],
+            used_idx: Dict[str, Set[int]],
+            used_meshes: Set[str]):
+        # если досчитали все пары — выдаём сеть
+        if used_meshes == nodes:
+            if any(m.match_type == MatchType.FACE for m in current):
+                yield Network(matches=list(current))
+            return
+        if idx >= len(pairs):
+            return
+
+        key = pairs[idx]
+        matches = pair_to_matches[key]
+
+        # ветка: пробуем каждый матч
+        for m in matches:
+            a, b = m.mesh1, m.mesh2
+            ia, ib = m.indices
+            # пропускаем, если индексы уже заняты
+            if ia in used_idx.get(a, ()) or ib in used_idx.get(b, ()):
+                continue
+
+            # отмечаем
+            used_idx.setdefault(a, set()).add(ia)
+            used_idx.setdefault(b, set()).add(ib)
+            added_a = a not in used_meshes
+            added_b = b not in used_meshes
+            if added_a: used_meshes.add(a)
+            if added_b: used_meshes.add(b)
+            current.append(m)
+
+            # рекурсивно углубляемся
+            yield from dfs(idx + 1, current, used_idx, used_meshes)
+
+            # откатываем
+            current.pop()
+            used_idx[a].remove(ia)
+            used_idx[b].remove(ib)
+            if added_a: used_meshes.remove(a)
+            if added_b: used_meshes.remove(b)
+
+        # и ветка без матчей из этой пары
+        yield from dfs(idx + 1, current, used_idx, used_meshes)
+
+    # стартуем
+    yield from dfs(0, [], {}, set())

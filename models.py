@@ -76,6 +76,5 @@ class Network:
 
 @dataclass
 class TransformMatch:
-    match: GraphMatch
-    rotation: Quaternion
-    translation: Vector
+    mesh_name: str
+    matrix_world: Matrix
