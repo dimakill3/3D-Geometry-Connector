@@ -1,5 +1,6 @@
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 from geometry_connector.enums import MatchType
 from mathutils import Vector, Quaternion, Matrix
 
@@ -40,6 +41,11 @@ class Mesh:
             result.extend(f.edges)
         return result
 
+    @property
+    def volume(self) -> float:
+        x, y, z = self.size
+        return x * y * z
+
 
 @dataclass
 class GraphMatch:
@@ -49,19 +55,36 @@ class GraphMatch:
     indices: Tuple[int, int]
     coeff: float
     edges: List[Tuple[Edge, Edge]] = field(default_factory=list)
+    rotation: Quaternion | None = None
+
+    @property
+    def inverted(self) -> "GraphMatch":
+        inverted_edges = [(deepcopy(e2), deepcopy(e1)) for e1, e2 in self.edges]
+
+        inv_rot = None
+        if self.rotation is not None:
+            inv_rot = self.rotation.inverted()
+
+        return GraphMatch(
+            mesh1=self.mesh2,
+            mesh2=self.mesh1,
+            match_type=self.match_type,
+            indices=(self.indices[1], self.indices[0]),
+            coeff=self.coeff,
+            edges=inverted_edges,
+            rotation=inv_rot
+        )
 
 
 # Граф: MeshName -> Connected MeshNames -> info about connection
 class MeshGraph:
     def __init__(self):
-        self.adj: Dict[str, Dict[str, List[GraphMatch]]] = {}
+        self.connections: Dict[str, Dict[str, List[GraphMatch]]] = {}
 
     def add_match(self, match: GraphMatch):
-        self.adj.setdefault(match.mesh1, {}).setdefault(match.mesh2, []).append(match)
-        self.adj.setdefault(match.mesh2, {}).setdefault(match.mesh1, []).append(
-            GraphMatch(match.mesh2, match.mesh1, match.match_type, match.indices, match.coeff)
-        )
-        print(f"В граф добавлено совпадение: {match}")
+        self.connections.setdefault(match.mesh1, {}).setdefault(match.mesh2, []).append(match)
+        self.connections.setdefault(match.mesh2, {}).setdefault(match.mesh1, []).append(match.inverted)
+        print(f"В граф добавлено совпадение: {match} \n")
 
 
 @dataclass
@@ -76,5 +99,6 @@ class Network:
 
 @dataclass
 class TransformMatch:
-    mesh_name: str
+    src_mesh_name: str
+    dst_mesh_name: str
     matrix_world: Matrix

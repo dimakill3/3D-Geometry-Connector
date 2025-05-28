@@ -12,7 +12,7 @@ class GeometryCalculator:
     def __init__(self):
         scene = bpy.context.scene
         self.angle_threshold = scene.coplanar_angle_threshold
-        self.distance_threshold = scene.coplanar_dist_threshold
+        self.distance_threshold = scene.coplanar_distance_threshold
         self.curvature_threshold = scene.curvature_threshold
 
 

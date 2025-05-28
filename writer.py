@@ -48,7 +48,7 @@ class Writer:
         print("Graph matches:")
         # Чтобы не дублировать двусторонние связи, будем выводить только m1 < m2
         seen = set()
-        for m1, nbrs in graph.adj.items():
+        for m1, nbrs in graph.connections.items():
             for m2, matches in nbrs.items():
                 if (m2, m1) in seen:
                     continue
@@ -60,8 +60,8 @@ class Writer:
                     idx1, idx2 = match.indices
                     coeff = match.coeff
                     print(f"  - {mt}: indices {idx1} ↔ {idx2}, coeff = {coeff:.3f}")
-        print("\nВсего узлов:", len(graph.adj))
-        total_edges = sum(len(v) for d in graph.adj.values() for v in d.values()) // 2
+        print("\nВсего узлов:", len(graph.connections))
+        total_edges = sum(len(v) for d in graph.connections.values() for v in d.values()) // 2
         print("Всего связей:", total_edges)
 
 
