@@ -67,7 +67,7 @@ def generate_networks(graph: MeshGraph):
 
             # Пропускаем, если индексы уже заняты
             if index_a in used_idx.get(a, ()) or index_b in used_idx.get(b, ()):
-                print(f"Индексы уже используется, пропуск матча")
+                print(f"Индексы уже используется, пропуск мэтча")
                 continue
 
             # Смотрим, какие мэши уже присоединены
@@ -77,7 +77,7 @@ def generate_networks(graph: MeshGraph):
             print(f"connected_meshes={connected_meshes}, need_add_a={need_add_a}, need_add_b={need_add_b}")
 
             if not need_add_a and not need_add_b:
-                print(f"Невозможно добавить ни одного матча, пропуск")
+                print(f"Невозможно добавить ни одного мэтча, пропуск")
                 continue
 
             # Маркируем занятые индексы
@@ -100,11 +100,11 @@ def generate_networks(graph: MeshGraph):
 
             # Если a ещё не присоединён
             if need_add_a:
-                print(f"Добавление инверсного соединения {a} -> {b}")
+                print(f"Добавление инвертированного соединения {a} -> {b}")
                 current.append(match.inverted)
                 yield from dfs(idx + 1, current, used_idx, used_meshes)
                 current.pop()
-                print(f"Откат инверсного соединения {a} -> {b}")
+                print(f"Откат инвертированного соединения {a} -> {b}")
 
             # Снимаем маркировку занятых индексов
             used_idx[a].remove(index_a)
@@ -115,7 +115,7 @@ def generate_networks(graph: MeshGraph):
                 used_meshes.remove(b)
 
         # Продолжаем поиск без мэтчей из этой пары
-        print(f"Переход к следующей паре без текущих матчей, idx={idx}")
+        print(f"Переход к следующей паре без текущих мэтчей, idx={idx}")
         yield from dfs(idx + 1, current, used_idx, used_meshes)
 
     # Начинаем обход графа
