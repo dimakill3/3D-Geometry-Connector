@@ -33,11 +33,11 @@ class GeometryResolverNPanelBuilder(bpy.types.Panel):
             # Выводим константы
             layout.label(text="Thresholds:")
             layout.prop(scene, "coplanar_angle_threshold")
-            layout.prop(scene, "coplanar_dist_threshold")
+            layout.prop(scene, "coplanar_distance_threshold")
             layout.prop(scene, "curvature_threshold")
             layout.prop(scene, "connected_edge_angle_threshold")
-            layout.prop(scene, "area_threshold")
-            layout.prop(scene, "edge_threshold")
+            layout.prop(scene, "face_area_threshold")
+            layout.prop(scene, "edge_length_threshold")
             layout.separator()
 
             # Кнопка запуска соединения
@@ -47,7 +47,7 @@ class GeometryResolverNPanelBuilder(bpy.types.Panel):
             # Переключение возможных вариантов соединений
             row = layout.row(align=True)
             row.operator(PreviousVariant.bl_idname, text="", icon='TRIA_LEFT')
-            row.prop(scene, "variant_index", text="")
+            row.prop(scene, "network_variant_index", text="")
             row.operator(NextVariant.bl_idname, text="", icon='TRIA_RIGHT')
             layout.operator(StopResolve.bl_idname, text="Stop", icon='PAUSE')
 
@@ -230,7 +230,7 @@ def register():
         description="Allowed edge length difference for edge matching"
     )
     scene.network_variant_index = IntProperty(
-        name="Variant Index",
+        name="Network Variant Index",
         default=0,
         min=0,
         description="Index of shown connect variant"
