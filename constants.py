@@ -1,3 +1,4 @@
+import math
 import os
 
 # Путь к JSON-файлу (относительно расположения add-on)
@@ -18,3 +19,6 @@ AREA_PENALTY = 0.1                                      # Штраф за нес
 EDGE_PENALTY = 0.8                                      # Штраф за несоответствие длин рёбер
 NORMAL_PENALTY = 0.1                                    # Штраф за несоответствие нормалей
 COMPARE_OTHER_MATCHES_PENALTY = 0.1                     # Штраф за несовпадение по другим соединениям
+
+NORMAL_ANGLE_THRESHOLD = math.radians(2)
+MAX_DISTANCE_BETWEEN_MESHES = 0.01                     # Штраф за несовпадение по другим соединениям

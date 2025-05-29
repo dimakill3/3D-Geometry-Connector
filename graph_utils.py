@@ -20,7 +20,6 @@ def sort_graph(graph: MeshGraph) -> MeshGraph:
 
 # Выдаёт сети группами для оптимизации
 def generate_networks(graph: MeshGraph):
-    print(f"Начало генерации сетей")
     connections = graph.connections
 
     # Собираем все меши
@@ -40,20 +39,13 @@ def generate_networks(graph: MeshGraph):
 
     # Рекурсивный dfs
     def dfs(idx: int, current: List[GraphMatch], used_idx: Dict[str, Set[int]], used_meshes: Set[str]):
-        print(f"DFS вызов idx={idx}, current_len={len(current)}, used_meshes={used_meshes}")
-
         # Если досчитали все пары — выдаём сеть
         if used_meshes == nodes:
-            print("Все меши объединены в сеть.")
             if any(m.match_type == MatchType.FACE for m in current):
-                print(f"Найден FACE-матч, генерируем Network с {len(current)} матчами")
                 yield Network(matches=list(current))
-            else:
-                print("FACE-матч не найден, сеть не возвращается")
             return
 
         if idx >= len(pairs):
-            print(f"Индекс idx={idx} вне диапазона пар, возврат без генерации")
             return
 
         key = pairs[idx]
@@ -63,21 +55,17 @@ def generate_networks(graph: MeshGraph):
         for match in matches:
             a, b = match.mesh1, match.mesh2
             index_a, index_b = match.indices
-            print(f"Проверка матча {a} <-> {b}: индексы ({index_a}, {index_b})")
 
             # Пропускаем, если индексы уже заняты
             if index_a in used_idx.get(a, ()) or index_b in used_idx.get(b, ()):
-                print(f"Индексы уже используется, пропуск мэтча")
                 continue
 
             # Смотрим, какие мэши уже присоединены
             connected_meshes = [connect.mesh2 for connect in current]
             need_add_a = a not in connected_meshes
             need_add_b = b not in connected_meshes
-            print(f"connected_meshes={connected_meshes}, need_add_a={need_add_a}, need_add_b={need_add_b}")
 
             if not need_add_a and not need_add_b:
-                print(f"Невозможно добавить ни одного мэтча, пропуск")
                 continue
 
             # Маркируем занятые индексы
@@ -92,19 +80,15 @@ def generate_networks(graph: MeshGraph):
 
             # Если b ещё не присоединён
             if need_add_b:
-                print(f"Добавление прямого соединения {b} -> {a}")
                 current.append(match)
                 yield from dfs(idx + 1, current, used_idx, used_meshes)
                 current.pop()
-                print(f"Откат прямого соединения {b} -> {a}")
 
             # Если a ещё не присоединён
             if need_add_a:
-                print(f"Добавление инвертированного соединения {a} -> {b}")
                 current.append(match.inverted)
                 yield from dfs(idx + 1, current, used_idx, used_meshes)
                 current.pop()
-                print(f"Откат инвертированного соединения {a} -> {b}")
 
             # Снимаем маркировку занятых индексов
             used_idx[a].remove(index_a)
@@ -115,7 +99,6 @@ def generate_networks(graph: MeshGraph):
                 used_meshes.remove(b)
 
         # Продолжаем поиск без мэтчей из этой пары
-        print(f"Переход к следующей паре без текущих мэтчей, idx={idx}")
         yield from dfs(idx + 1, current, used_idx, used_meshes)
 
     # Начинаем обход графа

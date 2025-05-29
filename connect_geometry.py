@@ -178,6 +178,7 @@ class GeometryConnector:
         # Финальная проверка нормалей граней
         n2_rot = r @ n2
         if n2_rot.dot(-n1) > cos_th:
+            print(f"[compare_normals] Нормаль локальная: {n2_rot}, нормаль соседа: {-n1}, dot = {n2_rot.dot(-n1)}, thr = {cos_th}")
             return True, q
 
         return False, None
