@@ -6,8 +6,7 @@ from geometry_connector.calculate_geometry import GeometryCalculator
 from geometry_connector.connect_geometry import GeometryConnector
 from geometry_connector.constants import BATCH_SIZE
 from geometry_connector.graph_utils import sort_graph, Network, generate_networks
-from geometry_connector.build_geometry import assemble_network, TransformMatch
-from geometry_connector.build_geometry import apply_transforms_to_scene
+from geometry_connector.build_geometry import TransformMatch, GeometryBuilder
 from geometry_connector.models import Mesh, MeshGraph
 from geometry_connector.writer import Writer
 
@@ -166,12 +165,12 @@ def show_another_network(idx : int) -> bool:
 
     network_to_show: Network = _cached_networks[idx]
 
-    transforms: List[TransformMatch] = assemble_network(network_to_show, _cached_meshes_dictionary, _cached_sorted_graph)
+    transforms: List[TransformMatch] = GeometryBuilder().assemble_network(network_to_show, _cached_meshes_dictionary, _cached_sorted_graph)
     if not transforms:
         print("WARNING: No transforms could be calculated without conflict")
         return False
 
-    apply_transforms_to_scene(transforms)
+    GeometryBuilder().apply_transforms_to_scene(transforms)
     print("INFO: Geometry built using network:")
     Writer.print_networks([network_to_show])
 
