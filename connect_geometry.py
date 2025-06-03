@@ -4,7 +4,7 @@ from geometry_connector import math_utils
 from geometry_connector.enums import MatchType
 from geometry_connector.models import GraphMatch, Face, Edge, Mesh, MeshGraph
 from geometry_connector.constants import AREA_PENALTY, EDGE_PENALTY, NORMAL_PENALTY, MIN_MATCH_FACE_COEFF
-from mathutils import Vector, Matrix, Quaternion
+from mathutils import Vector, Matrix
 import bpy
 
 
@@ -40,15 +40,20 @@ class GeometryConnector:
                         edges2 = f2.edges
                         n2 = len(edges2)
                         n_max = max(n1, n2)
+
                         if n1 != n2:
                             coeff -= (n_max - min(n1, n2)) / n_max * EDGE_PENALTY
+
+                        min_edges = edges1 if n1 <= n2 else edges2
+                        max_edges = edges2 if n1 <= n2 else edges1
 
                         # Сопоставление рёбер
                         matched_edges = []
                         used = set()
-                        for e1 in edges1:
+
+                        for e1 in min_edges:
                             found = False
-                            for e2 in edges2:
+                            for e2 in max_edges:
                                 if e2.new_index in used:
                                     continue
                                 if math_utils.compare_values(e1.length, e2.length, self.edge_length_threshold):
@@ -65,7 +70,7 @@ class GeometryConnector:
                         rotation = None
                         # Сравнение нормалей, если есть достаточно рёбер
                         if len(matched_edges) > 2:
-                            ok, rotation = self._compare_normals(f1, f2, matched_edges)
+                            ok = self._compare_normals(f1, f2, matched_edges)
 
                             if not ok:
                                 coeff -= NORMAL_PENALTY
@@ -80,8 +85,7 @@ class GeometryConnector:
                                 match_type=MatchType.FACE,
                                 indices=(f1.new_index, f2.new_index),
                                 coeff=coeff,
-                                edges=matched_edges,
-                                rotation=rotation
+                                edges=matched_edges
                             ))
 
         # endregion
@@ -90,7 +94,7 @@ class GeometryConnector:
 
         # for i, m1 in enumerate(pieces_meshes):
         #     for m2 in pieces_meshes[i + 1:]:
-        #         min_coeff = MIN_MATCH_FACE_COEFF
+        #         min_coeff = MIN_MATCH_EDGE_COEFF
         #         # Исключаем рёбра, у которых грани уже совпали по FACE
         #         existing = pieces_graph.adj.get(m1.name, {}).get(m2.name, [])
         #         used_face_idxs = {
@@ -122,7 +126,7 @@ class GeometryConnector:
 
 
     # Сравнение нормалей граней с учётом выравнивания совпавших рёбер
-    def _compare_normals(self, f1: Face, f2: Face, matching_edges: List[Tuple[Edge, Edge]]) -> Tuple[bool, Quaternion | None]:
+    def _compare_normals(self, f1: Face, f2: Face, matching_edges: List[Tuple[Edge, Edge]]) -> bool:
         # Порог и его косинус
         cos_th = math.cos(self.connected_edge_angle_threshold)
 
@@ -136,7 +140,7 @@ class GeometryConnector:
             v2_list.append((p2b - p2a).normalized())
 
         if not v1_list:
-            return False, None
+            return False
 
         # Ориентируем первую пару
         v1_ref = v1_list[0]
@@ -173,12 +177,11 @@ class GeometryConnector:
             v2o = (raw_v2_i * sign_i).normalized()
             v2_rot = r @ v2o
             if v1_i.dot(v2_rot) < cos_th:
-                return False, None
+                return False
 
         # Финальная проверка нормалей граней
         n2_rot = r @ n2
         if n2_rot.dot(-n1) > cos_th:
-            print(f"[compare_normals] Нормаль локальная: {n2_rot}, нормаль соседа: {-n1}, dot = {n2_rot.dot(-n1)}, thr = {cos_th}")
-            return True, q
+            return True
 
-        return False, None
+        return False

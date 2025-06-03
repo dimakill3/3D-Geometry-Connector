@@ -27,7 +27,7 @@ def generate_networks(graph: MeshGraph):
     for nbrs in connections.values():
         nodes |= set(nbrs.keys())
 
-    # Предварительно группируем матчи по парам
+    # Предварительно группируем мэтчи по парам
     pair_to_matches: Dict[frozenset, List[GraphMatch]] = {}
     for m1, nbrs in connections.items():
         for m2, matches in nbrs.items():

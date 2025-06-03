@@ -5,9 +5,9 @@ from geometry_connector.constants import JSON_PATH
 from mathutils import Vector
 
 
-class JsonMeshReader:
+class Reader:
     @staticmethod
-    def read(filepath: str = JSON_PATH) -> List[Mesh]:
+    def read_meshes(filepath: str = JSON_PATH) -> List[Mesh]:
         with open(filepath, 'r') as f:
             data = json.load(f)
 

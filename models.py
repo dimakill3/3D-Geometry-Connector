@@ -55,15 +55,10 @@ class GraphMatch:
     indices: Tuple[int, int]
     coeff: float
     edges: List[Tuple[Edge, Edge]] = field(default_factory=list)
-    rotation: Quaternion | None = None
 
     @property
     def inverted(self) -> "GraphMatch":
         inverted_edges = [(deepcopy(e2), deepcopy(e1)) for e1, e2 in self.edges]
-
-        inv_rot = None
-        if self.rotation is not None:
-            inv_rot = self.rotation.inverted()
 
         return GraphMatch(
             mesh1=self.mesh2,
@@ -72,7 +67,6 @@ class GraphMatch:
             indices=(self.indices[1], self.indices[0]),
             coeff=self.coeff,
             edges=inverted_edges,
-            rotation=inv_rot
         )
 
 
@@ -84,7 +78,8 @@ class MeshGraph:
     def add_match(self, match: GraphMatch):
         self.connections.setdefault(match.mesh1, {}).setdefault(match.mesh2, []).append(match)
         self.connections.setdefault(match.mesh2, {}).setdefault(match.mesh1, []).append(match.inverted)
-        print(f"В граф добавлено совпадение: {match} \n")
+        print(f"В граф добавлено совпадение: {match.mesh1} ↔ {match.mesh2}")
+        print(f"  - {match.match_type}: indices {match.indices[0]} ↔ {match.indices[1]}, coeff = {match.coeff:.3f}")
 
 
 @dataclass

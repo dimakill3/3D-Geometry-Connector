@@ -19,7 +19,7 @@ _generated_networks = None
 
 class GeometryResolverNPanelBuilder(bpy.types.Panel):
     bl_label = "Geometry Resolver"
-    bl_idname = "geometry_resolver_n_panel"
+    bl_idname = "GEOMETRY_RESOLVER_PT_N_PANEL"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = 'Geometry Resolver'
@@ -70,6 +70,7 @@ class ResolveGeometryButton(bpy.types.Operator):
         sorted_graph = sort_graph(graph)
         _cached_sorted_graph = sorted_graph
         Writer.print_graph(sorted_graph)
+        # Writer.draw_graph(sorted_graph)
 
         _generated_networks = generate_networks(sorted_graph)
 
