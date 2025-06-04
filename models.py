@@ -47,7 +47,7 @@ class Mesh:
         return x * y * z
 
 
-@dataclass
+@dataclass(eq=False)
 class GraphMatch:
     mesh1: str
     mesh2: str
@@ -68,6 +68,24 @@ class GraphMatch:
             coeff=self.coeff,
             edges=inverted_edges,
         )
+
+    def equal(self, match) -> bool:
+        inv = self.inverted
+
+        return self.match_type == match.match_type and ((self.mesh1 == match.mesh1 or inv.mesh1 == match.mesh1)
+                or (self.mesh2 == match.mesh2 or inv.mesh2 == match.mesh2)) and (self.indices == match.indices or inv.indices == match.indices)
+
+    def __eq__(self, other):
+        # Перенаправляем сравнение на ваш метод equal
+        return self.equal(other)
+
+    def __hash__(self):
+        # Упорядочиваем меши, чтобы игнорировать их порядок
+        sorted_meshes = tuple(sorted((self.mesh1, self.mesh2)))
+        # Упорядочиваем индексы, чтобы игнорировать их порядок
+        sorted_indices = tuple(sorted(self.indices))
+        # Включаем match_type (остальные поля – coeff, edges – в equal не участвуют)
+        return hash((sorted_meshes, self.match_type, sorted_indices))
 
 
 # Граф: MeshName -> Connected MeshNames -> info about connection

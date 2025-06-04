@@ -3,7 +3,8 @@ from typing import List, Tuple
 from geometry_connector import math_utils
 from geometry_connector.enums import MatchType
 from geometry_connector.models import GraphMatch, Face, Edge, Mesh, MeshGraph
-from geometry_connector.constants import AREA_PENALTY, EDGE_PENALTY, NORMAL_PENALTY, MIN_MATCH_FACE_COEFF
+from geometry_connector.constants import AREA_PENALTY, EDGE_PENALTY, NORMAL_PENALTY, MIN_MATCH_FACE_COEFF, \
+    MIN_MATCH_EDGE_COEFF
 from mathutils import Vector, Matrix
 import bpy
 
@@ -95,16 +96,21 @@ class GeometryConnector:
         # for i, m1 in enumerate(pieces_meshes):
         #     for m2 in pieces_meshes[i + 1:]:
         #         min_coeff = MIN_MATCH_EDGE_COEFF
-        #         # Исключаем рёбра, у которых грани уже совпали по FACE
-        #         existing = pieces_graph.adj.get(m1.name, {}).get(m2.name, [])
-        #         used_face_idxs = {
-        #             match.indices[0]
-        #             for match in existing
-        #             if match.match_type == MatchType.FACE
-        #         }
+        #         # Не рассматриваем соединения, у которых уже совпали грани
+        #         existing = pieces_graph.connections.get(m1.name, {}).get(m2.name, [])
+        #         if len(existing) > 0:
+        #             continue
         #
-        #         edges1 = [e for f in m1.faces if f.new_index not in used_face_idxs for e in f.edges]
-        #         edges2 = [e for f in m2.faces if f.new_index not in used_face_idxs for e in f.edges]
+        #         m1_used_edges = list({edge.new_index for matches in pieces_graph.connections.get(m1.name, {}).values()
+        #                                for match in matches if match.match_type == MatchType.FACE
+        #                                for edge, _ in match.edges})
+        #
+        #         m2_used_edges = list({edge.new_index for matches in pieces_graph.connections.get(m2.name, {}).values()
+        #                            for match in matches if match.match_type == MatchType.FACE
+        #                            for edge, _ in match.edges})
+        #
+        #         edges1 = [edge for edge in m1.edges if edge.new_index not in m1_used_edges]
+        #         edges2 = [edge for edge in m2.edges if edge.new_index not in m2_used_edges]
         #
         #         for e1 in edges1:
         #             for e2 in edges2:

@@ -126,12 +126,9 @@ class GeometryBuilder:
                 corr = Matrix.Translation(shift)
                 tm.matrix_world = corr @ tm.matrix_world
                 mat_worlds[src] = tm.matrix_world
-                print(f"[correct_transformations] Применена коррекция для {src}: shift={shift}")
 
 
     def _flip_incorrect_orientations(self, network : Network, graph: MeshGraph, meshes: Dict[str, Mesh], mat_worlds: Dict[str, Matrix], transforms: List[TransformMatch]):
-        print("[flip_orientations] Начало проверки ориентаций")
-
         cos_th = math.cos(NORMAL_ANGLE_THRESHOLD)
         tm_map = {tm.src_mesh_name: tm for tm in transforms}
 
@@ -143,32 +140,24 @@ class GeometryBuilder:
 
             for tm in transforms[1:]:
                 name = tm.src_mesh_name
-                print(f"[flip_orientations] Проверяем меш '{name}'")
                 for neighbor_name, gm_list in graph.connections.get(name, {}).items():
-                    print(f"[flip_orientations]  Найден сосед '{neighbor_name}' с {len(gm_list)} связями")
                     for gm in gm_list:
                         if gm in added_matches or gm.inverted in added_matches:
                             continue
 
-                        print(f"[flip_orientations]   Используемый GraphMatch: {gm.mesh1} -> {gm.mesh2}, indices: {gm.indices[0]} {gm.indices[1]}")
                         is_src = (name == gm.mesh2)
                         idx_local, idx_other = (gm.indices[1], gm.indices[0]) if is_src else (gm.indices[0], gm.indices[1])
                         fe_local = meshes[name].faces[idx_local] if gm.match_type == MatchType.FACE else meshes[name].edges[idx_local]
                         fe_other = meshes[neighbor_name].faces[idx_other] if gm.match_type == MatchType.FACE else meshes[neighbor_name].edges[idx_other]
                         n_local = (mat_worlds[name].to_3x3() @ fe_local.normal).normalized()
                         n_other = (mat_worlds[neighbor_name].to_3x3() @ fe_other.normal).normalized()
-                        print(f"[flip_orientations]    Нормаль локальная: {n_local}, нормаль соседа: {-n_other}, dot = {n_local.dot(-n_other)}, thr = {cos_th}")
                         if n_local.dot(-n_other) < cos_th:
-                            print(f"[flip_orientations]    Нормали не противоположны, заносим {name} и {neighbor_name}")
                             meshes_to_flip.append(name)
                             meshes_to_flip.append(neighbor_name)
                             added_matches.append(gm)
                             break
                         else:
-                            print(f"[flip_orientations]  Для меша '{name}' нет используемых соединений, требующих флипа")
                             continue
-
-            print(f"[flip_orientations]  Проход закончен, список для флипа {meshes_to_flip}")
 
             counter = Counter(meshes_to_flip)
             if counter:
@@ -178,8 +167,6 @@ class GeometryBuilder:
 
             if most_common_element in flipped_meshes or count < 2:
                 break
-
-            print(f"[flip_orientations]  Самый частый элемент {most_common_element}, поворачиваем его")
 
             match = [m for m in network.matches if m.mesh2 == most_common_element][0]
 
@@ -194,6 +181,3 @@ class GeometryBuilder:
             mat_worlds[most_common_element] = tm_map[most_common_element].matrix_world
 
             flipped_meshes.add(most_common_element)
-            print(f"[flip_orientations]    Меш '{most_common_element}' флипанут на 180° вокруг нормали {n_local}")
-
-        print("[flip_orientations] Завершение проверки ориентаций")
