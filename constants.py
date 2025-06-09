@@ -11,7 +11,7 @@ GRAPH_PATH = os.path.join(BASE_DIR, "data", GRAPH_FILENAME)
 # # Константы
 BATCH_SIZE = 100
 
-MIN_MATCH_FACE_COEFF = 0.6                              # Минимальный итоговый коэффициент
+MIN_MATCH_FACE_COEFF = 0.65                              # Минимальный итоговый коэффициент
 MIN_MATCH_EDGE_COEFF = 0.99999                          # Минимальный итоговый коэффициент
 ORIG_INDICES = "orig_indices"                           # Метка для int слоя граней и рёбер
 ORIG_INDEX = "orig_index"                               # Метка для str слоя граней

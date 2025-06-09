@@ -3,12 +3,11 @@ import os
 import math
 
 # Константы
-MODEL_DIR = "C:/path/to/your/models"  # Измените на вашу директорию с моделями
-COLLECTION_NAME = "Imported_Models"
-SPACING = 2.0  # Расстояние между моделями при размещении на сцене
-SUPPORTED_EXTENSIONS = {".fbx", ".obj", ".blend", ".glb", ".gltf", ".stl"}
+MODELS_PATH = os.path.join(os.path.dirname(__file__), "models")     # Путь до моделей
+IMPORTED_MODELS_COLLECTION_NAME = "Imported_Models"                 # Название коллекции для группировки на сцене
+SPACING = 2.0                                                       # Расстояние между моделями при размещении на сцене
 
-# Функции импорта
+SUPPORTED_EXTENSIONS = {".fbx", ".obj", ".blend", ".glb", ".gltf", ".stl"}
 IMPORT_FUNCTIONS = {
     ".fbx": lambda path: bpy.ops.import_scene.fbx(filepath=path),
     ".obj": lambda path: bpy.ops.import_scene.obj(filepath=path),
@@ -47,7 +46,7 @@ def load_models_from_directory(directory):
         print(f"[INFO] Директория не существует: {directory}")
         return
 
-    # Сбор путей к поддерживаемым расширениям
+    # Поиск поддерживаемых моеделей
     files = sorted(os.listdir(directory))
     model_paths = []
     for fname in files:
@@ -59,9 +58,8 @@ def load_models_from_directory(directory):
         print(f"[INFO] В директории {directory} не найдено поддерживаемых моделей.")
         return
 
-    # Подготовка коллекции
-    clear_collection(COLLECTION_NAME)
-    coll = create_collection(COLLECTION_NAME)
+    clear_collection(IMPORTED_MODELS_COLLECTION_NAME)
+    coll = create_collection(IMPORTED_MODELS_COLLECTION_NAME)
 
     imported_objects = []
     for path in model_paths:
@@ -88,7 +86,7 @@ def load_models_from_directory(directory):
             coll.objects.link(obj)
             imported_objects.append(obj)
 
-    # Размещение объектов по сетке
+    # Размещение объектов
     count = len(imported_objects)
     cols = math.ceil(math.sqrt(count))
     for idx, obj in enumerate(imported_objects):
@@ -96,10 +94,8 @@ def load_models_from_directory(directory):
         col = idx % cols
         obj.location = (col * SPACING, row * SPACING, 0)
 
-    print(f"[INFO] Импортировано {count} объектов в коллекцию '{COLLECTION_NAME}'.")
+    print(f"[INFO] Импортировано {count} объектов в коллекцию '{IMPORTED_MODELS_COLLECTION_NAME}'.")
 
 
-# Запуск
 if __name__ == "__main__":
-    print(f"[ERROR] Ошибка при импорте")
-    load_models_from_directory(MODEL_DIR)
+    load_models_from_directory(MODELS_PATH)
