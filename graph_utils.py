@@ -82,30 +82,7 @@ def generate_networks(graph: MeshGraph):
                 print("Пропущена сеть — не содержит FACE соединений.")
             return
 
-        # Вычисляем «расстояние» для каждого match от первого в current
-        if current:
-            start_mesh = current[0].mesh1
-
-            # BFS по меш-графу, чтобы найти минимальное число переходов между мешами:
-            dist_from_start: Dict[str, int] = {start_mesh: 0}
-            queue = deque([start_mesh])
-
-            while queue:
-                u = queue.popleft()
-                # neighbors — это все меши, которые смежны с u (ключи connections[u])
-                for v in connections.get(u, {}).keys():
-                    if v not in dist_from_start:
-                        dist_from_start[v] = dist_from_start[u] + 1
-                        queue.append(v)
-
-            def match_distance(m: GraphMatch) -> int:
-                return dist_from_start.get(m.mesh2, float('inf'))
-
-            # Сортируем все совпадения по возрастанию расстояния
-            ordered_matches = sorted(all_matches, key=lambda m: match_distance(m))
-        else:
-            # Если current пуст, берём исходный порядок
-            ordered_matches = all_matches
+        ordered_matches = order_matches(all_matches, current, connections)
 
         for match in ordered_matches:
             a, b = match.mesh1, match.mesh2
@@ -211,3 +188,28 @@ def generate_networks(graph: MeshGraph):
 
     print("🔍 Начинаем построение всех возможных сетей...\n")
     yield from dfs([], {}, set(), set())
+
+
+def order_matches(all_matches, current, connections):
+    if not current:
+        return all_matches
+
+    # Берём mesh2 первого совпадения из current
+    start_mesh = current[0].mesh2
+
+    # BFS для вычисления расстояний от start_mesh до всех других мешей
+    dist = {start_mesh: 0}
+    queue = deque([start_mesh])
+    while queue:
+        u = queue.popleft()
+        for v in connections.get(u, {}).keys():
+            if v not in dist:
+                dist[v] = dist[u] + 1
+                queue.append(v)
+
+    # Функция выдаёт расстояние для match (по mesh2)
+    def match_dist(m):
+        return dist.get(m.mesh2, float('inf'))
+
+    # Сортируем по возрастанию расстояния
+    return sorted(all_matches, key=match_dist)

@@ -66,7 +66,7 @@ class ModalFaceHighlighter(bpy.types.Operator):
         self._last_change_time = time.perf_counter()
 
         wm = context.window_manager
-        self._timer = wm.event_timer_add(0.1, window=context.window)  # Проверяем 10 раз в секунду
+        self._timer = wm.event_timer_add(0.1, window=context.window)
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
@@ -94,7 +94,7 @@ class ModalFaceHighlighter(bpy.types.Operator):
         mat = bpy.data.materials.get(self._highlight_mat_name)
         if not mat:
             mat = bpy.data.materials.new(name=self._highlight_mat_name)
-            mat.diffuse_color = (1, 0, 0, 1)  # Красный
+            mat.diffuse_color = (1, 0, 0, 1)
             self._created_material = True
         else:
             self._created_material = False

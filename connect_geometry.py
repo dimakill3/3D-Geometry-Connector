@@ -3,8 +3,7 @@ from typing import List, Tuple
 from geometry_connector import math_utils
 from geometry_connector.enums import MatchType
 from geometry_connector.models import GraphMatch, Face, Edge, Mesh, MeshGraph
-from geometry_connector.constants import AREA_PENALTY, EDGE_PENALTY, NORMAL_PENALTY, MIN_MATCH_FACE_COEFF, \
-    MIN_MATCH_EDGE_COEFF
+from geometry_connector.constants import AREA_PENALTY, EDGE_PENALTY, NORMAL_PENALTY, MIN_MATCH_FACE_COEFF, MIN_MATCH_EDGE_COEFF
 from mathutils import Vector, Matrix
 import bpy
 
@@ -23,55 +22,53 @@ class GeometryConnector:
 
         # region Поиск совпадений по граням
 
-        for i, m1 in enumerate(pieces_meshes):
-            for m2 in pieces_meshes[i + 1:]:
-                for f1 in m1.faces:
-                    a1 = f1.area
-                    edges1 = f1.edges
-                    n1 = len(edges1)
+        for i, mesh1 in enumerate(pieces_meshes):
+            for mesh2 in pieces_meshes[i + 1:]:
+                for face1 in mesh1.faces:
+                    edges1 = face1.edges
+                    edge_count1 = len(edges1)
 
-                    for f2 in m2.faces:
+                    for face2 in mesh2.faces:
                         coeff = 1.0
 
                         # Сравнение площадей
-                        if not math_utils.compare_values(a1, f2.area, self.area_threshold):
+                        if not math_utils.compare_values(face1.area, face2.area, self.area_threshold):
                             coeff -= AREA_PENALTY
 
                         # Подготовка рёбер
-                        edges2 = f2.edges
-                        n2 = len(edges2)
-                        n_max = max(n1, n2)
+                        edges2 = face2.edges
+                        edge_count2 = len(edges2)
+                        max_count = max(edge_count1, edge_count2)
 
-                        if n1 != n2:
-                            coeff -= (n_max - min(n1, n2)) / n_max * EDGE_PENALTY
+                        if edge_count1 != edge_count2:
+                            coeff -= (max_count - min(edge_count1, edge_count2)) / max_count * EDGE_PENALTY
 
-                        min_edges = edges1 if n1 <= n2 else edges2
-                        max_edges = edges2 if n1 <= n2 else edges1
+                        min_edges = edges1 if edge_count1 <= edge_count2 else edges2
+                        max_edges = edges2 if edge_count1 <= edge_count2 else edges1
 
                         # Сопоставление рёбер
                         matched_edges = []
                         used = set()
 
-                        for e1 in min_edges:
+                        for edge1 in min_edges:
                             found = False
-                            for e2 in max_edges:
-                                if e2.new_index in used:
+                            for edge2 in max_edges:
+                                if edge2.new_index in used:
                                     continue
-                                if math_utils.compare_values(e1.length, e2.length, self.edge_length_threshold):
-                                    used.add(e2.new_index)
-                                    if n1 <= n2:
-                                        matched_edges.append((e1, e2))
+                                if math_utils.compare_values(edge1.length, edge2.length, self.edge_length_threshold):
+                                    used.add(edge2.new_index)
+                                    if edge_count1 <= edge_count2:
+                                        matched_edges.append((edge1, edge2))
                                     else:
-                                        matched_edges.append((e2, e1))
+                                        matched_edges.append((edge2, edge1))
                                     found = True
                                     break
                             if not found:
-                                coeff -= EDGE_PENALTY / n_max
+                                coeff -= EDGE_PENALTY / max_count
 
-                        rotation = None
                         # Сравнение нормалей, если есть достаточно рёбер
                         if len(matched_edges) > 2:
-                            ok = self._compare_normals(f1, f2, matched_edges)
+                            ok = self._compare_normals(face1, face2, matched_edges)
 
                             if not ok:
                                 coeff -= NORMAL_PENALTY
@@ -81,10 +78,10 @@ class GeometryConnector:
                         # Добавляем совпадение, если коэффициент удовлетворён
                         if coeff >= MIN_MATCH_FACE_COEFF:
                             pieces_graph.add_match(GraphMatch(
-                                mesh1=m1.name,
-                                mesh2=m2.name,
+                                mesh1=mesh1.name,
+                                mesh2=mesh2.name,
                                 match_type=MatchType.FACE,
-                                indices=(f1.new_index, f2.new_index),
+                                indices=(face1.new_index, face2.new_index),
                                 coeff=coeff,
                                 edges=matched_edges
                             ))
@@ -93,35 +90,35 @@ class GeometryConnector:
 
         # region Поиск совпадений по рёбрам
 
-        # for i, m1 in enumerate(pieces_meshes):
-        #     for m2 in pieces_meshes[i + 1:]:
+        # for i, mesh1 in enumerate(pieces_meshes):
+        #     for mesh2 in pieces_meshes[i + 1:]:
         #         min_coeff = MIN_MATCH_EDGE_COEFF
         #         # Не рассматриваем соединения, у которых уже совпали грани
-        #         existing = pieces_graph.connections.get(m1.name, {}).get(m2.name, [])
+        #         existing = pieces_graph.connections.get(mesh1.name, {}).get(mesh2.name, [])
         #         if len(existing) > 0:
         #             continue
         #
-        #         m1_used_edges = list({edge.new_index for matches in pieces_graph.connections.get(m1.name, {}).values()
+        #         m1_used_edges = list({edge.new_index for matches in pieces_graph.connections.get(mesh1.name, {}).values()
         #                                for match in matches if match.match_type == MatchType.FACE
         #                                for edge, _ in match.edges})
         #
-        #         m2_used_edges = list({edge.new_index for matches in pieces_graph.connections.get(m2.name, {}).values()
+        #         m2_used_edges = list({edge.new_index for matches in pieces_graph.connections.get(mesh2.name, {}).values()
         #                            for match in matches if match.match_type == MatchType.FACE
         #                            for edge, _ in match.edges})
         #
-        #         edges1 = [edge for edge in m1.edges if edge.new_index not in m1_used_edges]
-        #         edges2 = [edge for edge in m2.edges if edge.new_index not in m2_used_edges]
+        #         edges1 = [edge for edge in mesh1.edges if edge.new_index not in m1_used_edges]
+        #         edges2 = [edge for edge in mesh2.edges if edge.new_index not in m2_used_edges]
         #
-        #         for e1 in edges1:
-        #             for e2 in edges2:
-        #                 max_len = max(e1.length, e2.length)
-        #                 coeff = 1 - abs(e1.length / max_len - e2.length / max_len)
+        #         for edge1 in edges1:
+        #             for edge2 in edges2:
+        #                 max_len = max(edge1.length, edge2.length)
+        #                 coeff = 1 - abs(edge1.length / max_len - edge2.length / max_len)
         #                 if coeff >= min_coeff:
         #                     pieces_graph.add_match(GraphMatch(
-        #                         mesh1=m1.name,
-        #                         mesh2=m2.name,
+        #                         mesh1=mesh1.name,
+        #                         mesh2=mesh2.name,
         #                         match_type=MatchType.EDGE,
-        #                         indices=(e1.new_index, e2.new_index),
+        #                         indices=(edge1.new_index, edge2.new_index),
         #                         coeff=coeff
         #                     ))
         #                     min_coeff = coeff
@@ -133,15 +130,15 @@ class GeometryConnector:
 
     # Сравнение нормалей граней с учётом выравнивания совпавших рёбер
     def _compare_normals(self, f1: Face, f2: Face, matching_edges: List[Tuple[Edge, Edge]]) -> bool:
-        # Порог и его косинус
+        # Косинус порогового угла
         cos_th = math.cos(self.connected_edge_angle_threshold)
 
         # Собираем направляющие векторы по рёбрам
         v1_list: List[Vector] = []
         v2_list: List[Vector] = []
-        for e1, e2 in matching_edges:
-            p1a, p1b = map(Vector, e1.vertices)
-            p2a, p2b = map(Vector, e2.vertices)
+        for edge1, edge2 in matching_edges:
+            p1a, p1b = map(Vector, edge1.vertices)
+            p2a, p2b = map(Vector, edge2.vertices)
             v1_list.append((p1b - p1a).normalized())
             v2_list.append((p2b - p2a).normalized())
 
@@ -175,7 +172,6 @@ class GeometryConnector:
 
         # Матрица вращения
         r = M1 @ M2_inv
-        q = r.to_quaternion()
 
         # Проверяем все остальные рёбра через скалярное произведение
         for v1_i, raw_v2_i in zip(v1_list, v2_list):
