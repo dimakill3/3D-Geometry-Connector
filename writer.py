@@ -1,6 +1,5 @@
 import json
 from typing import List
-
 from geometry_connector.enums import MatchType
 from geometry_connector.models import Mesh, MeshGraph, Network
 from geometry_connector.constants import JSON_PATH, GRAPH_PATH

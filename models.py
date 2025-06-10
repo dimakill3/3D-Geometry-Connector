@@ -1,8 +1,8 @@
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict
 from geometry_connector.enums import MatchType
-from mathutils import Vector, Quaternion, Matrix
+from mathutils import Vector, Matrix
 
 
 @dataclass
@@ -96,8 +96,6 @@ class MeshGraph:
     def add_match(self, match: GraphMatch):
         self.connections.setdefault(match.mesh1, {}).setdefault(match.mesh2, []).append(match)
         self.connections.setdefault(match.mesh2, {}).setdefault(match.mesh1, []).append(match.inverted)
-        print(f"В граф добавлено совпадение: {match.mesh1} ↔ {match.mesh2}")
-        print(f"  - {match.match_type}: indices {match.indices[0]} ↔ {match.indices[1]}, coeff = {match.coeff:.3f}")
 
 
 @dataclass
@@ -108,10 +106,3 @@ class Network:
     def __post_init__(self):
         # Считаем вес как сумму coeff всех совпадений
         self.weight = sum(m.coeff for m in self.matches)
-
-
-@dataclass
-class TransformMatch:
-    src_mesh_name: str
-    dst_mesh_name: str
-    matrix_world: Matrix

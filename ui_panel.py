@@ -1,14 +1,15 @@
 ﻿import math
 import bpy
-from typing import Dict, List
+from typing import Dict
 from bpy.props import FloatProperty, IntProperty
 from geometry_connector.calculate_geometry import GeometryCalculator
 from geometry_connector.connect_geometry import GeometryConnector
 from geometry_connector.constants import BATCH_SIZE
 from geometry_connector.graph_utils import sort_graph, Network, generate_networks
-from geometry_connector.build_geometry import TransformMatch, GeometryBuilder
+from geometry_connector.build_geometry import GeometryBuilder
 from geometry_connector.models import Mesh, MeshGraph
 from geometry_connector.writer import Writer
+from mathutils import Matrix
 
 _cached_networks : list[Network] = None
 _cached_meshes_dictionary : Dict[str, Mesh] = None
@@ -48,7 +49,7 @@ class GeometryResolverNPanelBuilder(bpy.types.Panel):
             row.operator(PreviousVariant.bl_idname, text="", icon='TRIA_LEFT')
             row.prop(scene, "network_variant_index", text="")
             row.operator(NextVariant.bl_idname, text="", icon='TRIA_RIGHT')
-            layout.operator(StopResolve.bl_idname, text="Stop", icon='PAUSE')
+            layout.operator(StopResolveButton.bl_idname, text="Stop", icon='PAUSE')
 
 
 class ResolveGeometryButton(bpy.types.Operator):
@@ -129,7 +130,7 @@ class NextVariant(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class StopResolve(bpy.types.Operator):
+class StopResolveButton(bpy.types.Operator):
     bl_idname = "geometry_resolver_n_panel.stop"
     bl_label = "Stop"
     bl_description = "Exit change mode"
@@ -165,14 +166,14 @@ def show_another_network(idx : int) -> bool:
 
     network_to_show: Network = _cached_networks[idx]
 
-    transforms: List[TransformMatch] = GeometryBuilder().assemble_network(network_to_show, _cached_meshes_dictionary, _cached_sorted_graph)
+    Writer.print_networks([network_to_show])
+    transforms: Dict[str, Matrix] = GeometryBuilder().assemble_network(network_to_show, _cached_meshes_dictionary, _cached_sorted_graph)
     if not transforms:
         print("WARNING: No transforms could be calculated without conflict")
         return False
 
     GeometryBuilder().apply_transforms_to_scene(transforms)
     print("INFO: Geometry built using network:")
-    Writer.print_networks([network_to_show])
 
     return True
 
@@ -185,7 +186,7 @@ DEFAULT_CONNECTED_EDGE_ANGLE_THRESHOLD = math.radians(1)  # Минимальны
 DEFAULT_FACE_AREA_THRESHOLD = 0.00001  # Допустимая разница площадей граней для совпадения
 DEFAULT_EDGE_LENGTH_THRESHOLD = 0.00130  # Допустимая разница длин рёбер
 
-classes = [GeometryResolverNPanelBuilder, ResolveGeometryButton, PreviousVariant, NextVariant, StopResolve]
+classes = [GeometryResolverNPanelBuilder, ResolveGeometryButton, PreviousVariant, NextVariant, StopResolveButton]
 
 
 def register():
@@ -196,18 +197,21 @@ def register():
         subtype='ANGLE',
         name="Coplanar Angle Threshold",
         default=DEFAULT_COPLANAR_ANGLE_THRESHOLD,
+        min=0,
         description="Angle below which faces are considered coplanar"
     )
     scene.coplanar_distance_threshold = FloatProperty(
         precision=5,
         name="Coplanar Distance Threshold",
         default=DEFAULT_COPLANAR_DISTANCE_THRESHOLD,
+        min=0,
         description="Distance below which faces are considered coplanar"
     )
     scene.curvature_threshold = FloatProperty(
         precision=5,
         name="Curvature Threshold",
         default=DEFAULT_CURVATURE_THRESHOLD,
+        min=0,
         description="Deviation threshold for vertex curvature classification"
     )
     scene.connected_edge_angle_threshold = FloatProperty(
@@ -215,18 +219,21 @@ def register():
         precision=5,
         name="Edge Angle Threshold",
         default=DEFAULT_CONNECTED_EDGE_ANGLE_THRESHOLD,
+        min=0,
         description="Angle threshold for connected edge matching"
     )
     scene.face_area_threshold = FloatProperty(
         precision=5,
         name="Area Threshold",
         default=DEFAULT_FACE_AREA_THRESHOLD,
+        min=0,
         description="Allowed area difference for face matching"
     )
     scene.edge_length_threshold = FloatProperty(
         precision=5,
         name="Edge Length Threshold",
         default=DEFAULT_EDGE_LENGTH_THRESHOLD,
+        min=0,
         description="Allowed edge length difference for edge matching"
     )
     scene.network_variant_index = IntProperty(
