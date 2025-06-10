@@ -66,20 +66,9 @@ def generate_networks(graph: MeshGraph):
 
     def dfs(current: List[GraphMatch], used_idx: Dict[str, Set[int]], used_meshes: Set[str],
             skipped_matches: Set[GraphMatch]):
-        print(f"Текущая сеть: {[f'{m.mesh1}->{m.mesh2}' for m in current]}")
-        print(f"Задействованные меши: {used_meshes}")
-        print(f"Занятые индексы: {used_idx}")
-        print(f"Пропущенные соединения: {[f'{m.mesh1}->{m.mesh2}' for m in skipped_matches]}")
-
         if used_meshes == nodes:
             if any(m.match_type == MatchType.FACE for m in current):
-                print(">>> Сформирована полная сеть:")
-                for match in current:
-                    print(
-                        f"    {match.mesh1} → {match.mesh2} | type: {match.match_type.name} | indices: {match.indices} | coeff: {match.coeff:.3f}")
                 yield Network(matches=list(current))
-            else:
-                print("Пропущена сеть — не содержит FACE соединений.")
             return
 
         ordered_matches = order_matches(all_matches, current, connections)
@@ -87,30 +76,24 @@ def generate_networks(graph: MeshGraph):
         for match in ordered_matches:
             a, b = match.mesh1, match.mesh2
             index_a, index_b = match.indices
-            print(f"Рассматриваем совпадение: {a} ↔ {b}")
 
             if match in skipped_matches:
-                print(f"❌ Пропущено ранее: {a} ↔ {b}")
                 continue
 
             if index_a in used_idx.get(a, ()) or index_b in used_idx.get(b, ()):
-                print(f"⚠️ Индексы заняты: {a}[{index_a}] или {b}[{index_b}]")
                 continue
 
             if len(used_meshes) is 0:
-                print(f"🚀 Стартуем с соединения: {a} ↔ {b}")
                 used_idx.setdefault(a, set()).add(index_a)
                 used_idx.setdefault(b, set()).add(index_b)
                 used_meshes.add(a)
                 used_meshes.add(b)
 
                 current.append(match.inverted)
-                print(f"➕ Добавлено: {a} → {b}")
                 yield from dfs(current, used_idx, used_meshes, skipped_matches)
                 current.pop()
 
                 current.append(match)
-                print(f"➕ Добавлено: {b} → {a}")
                 yield from dfs(current, used_idx, used_meshes, skipped_matches)
                 current.pop()
 
@@ -120,7 +103,6 @@ def generate_networks(graph: MeshGraph):
                 used_meshes.remove(b)
 
                 skipped_matches.add(match)
-                print(f"🔁 Пробуем без соединения: {a} ↔ {b}")
                 continue
 
             connected_meshes = [connect.mesh2 for connect in current]
@@ -128,7 +110,6 @@ def generate_networks(graph: MeshGraph):
             can_add_b = b not in connected_meshes
 
             if not can_add_a and not can_add_b:
-                print(f"⛔ Оба меша уже подключены: {a}, {b}")
                 continue
 
             not_used_a = a not in used_meshes
@@ -136,7 +117,6 @@ def generate_networks(graph: MeshGraph):
 
             if can_add_a and not_used_a:
                 if not_used_b:
-                    print(f"🕒 Откладываем {a} → {b}")
                     continue
                 else:
                     used_idx.setdefault(a, set()).add(index_a)
@@ -147,7 +127,6 @@ def generate_networks(graph: MeshGraph):
                         used_meshes.add(b)
 
                     current.append(match.inverted)
-                    print(f"🔗 Пробуем: {a} → {b}")
                     yield from dfs(current, used_idx, used_meshes, skipped_matches)
                     current.pop()
 
@@ -160,7 +139,6 @@ def generate_networks(graph: MeshGraph):
 
             if can_add_b and not_used_b:
                 if not_used_a:
-                    print(f"🕒 Откладываем {b} → {a}")
                     continue
                 else:
                     used_idx.setdefault(a, set()).add(index_a)
@@ -171,7 +149,6 @@ def generate_networks(graph: MeshGraph):
                         used_meshes.add(b)
 
                     current.append(match)
-                    print(f"🔗 Пробуем: {b} → {a}")
                     yield from dfs(current, used_idx, used_meshes, skipped_matches)
                     current.pop()
 
@@ -183,21 +160,18 @@ def generate_networks(graph: MeshGraph):
                         used_meshes.remove(b)
 
             skipped_matches.add(match)
-            print(f"Пробуем без: {a} ↔ {b}")
             continue
 
-    print("🔍 Начинаем построение всех возможных сетей...\n")
     yield from dfs([], {}, set(), set())
 
 
+# Сортируем по возрастанию расстояния
 def order_matches(all_matches, current, connections):
     if not current:
         return all_matches
 
-    # Берём mesh2 первого совпадения из current
     start_mesh = current[0].mesh2
 
-    # BFS для вычисления расстояний от start_mesh до всех других мешей
     dist = {start_mesh: 0}
     queue = deque([start_mesh])
     while queue:
@@ -207,9 +181,7 @@ def order_matches(all_matches, current, connections):
                 dist[v] = dist[u] + 1
                 queue.append(v)
 
-    # Функция выдаёт расстояние для match (по mesh2)
     def match_dist(m):
         return dist.get(m.mesh2, float('inf'))
 
-    # Сортируем по возрастанию расстояния
     return sorted(all_matches, key=match_dist)

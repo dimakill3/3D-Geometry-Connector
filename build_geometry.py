@@ -47,10 +47,6 @@ class GeometryBuilder:
 
 
     def _flip_incorrect_orientations(self, network : Network, graph: MeshGraph, meshes: Dict[str, Mesh], mat_worlds: Dict[str, Matrix], base_mesh: str):
-        print("[flip_orientations] Начало проверки ориентаций")
-
-        cos_th = math.cos(NORMAL_ANGLE_THRESHOLD)
-
         flipped_meshes: Set[str] = set()
         flipped_meshes.add(base_mesh)
 
@@ -60,38 +56,17 @@ class GeometryBuilder:
 
             for net in network.matches[1:]:
                 name = net.mesh2
-                print(f"[flip_orientations] Проверяем меш '{name}'")
-                for neighbor_name, gm_list in graph.connections.get(name, {}).items():
-                    print(f"[flip_orientations]  Найден сосед '{neighbor_name}' с {len(gm_list)} связями")
-                    for gm in gm_list:
-                        if gm in added_matches or gm.inverted in added_matches:
+                for neighbor_name, match_list in graph.connections.get(name, {}).items():
+                    for match in match_list:
+                        if match in added_matches or match.inverted in added_matches:
                             continue
 
-                        print(
-                            f"[flip_orientations]   Используемый GraphMatch: {gm.mesh1} -> {gm.mesh2}, indices: {gm.indices[0]} {gm.indices[1]}")
-                        is_src = (name == gm.mesh2)
-                        idx_local, idx_other = (gm.indices[1], gm.indices[0]) if is_src else (gm.indices[0],
-                                                                                              gm.indices[1])
-                        fe_local = meshes[name].faces[idx_local] if gm.match_type == MatchType.FACE else \
-                        meshes[name].edges[idx_local]
-                        fe_other = meshes[neighbor_name].faces[idx_other] if gm.match_type == MatchType.FACE else \
-                        meshes[neighbor_name].edges[idx_other]
-                        n_local = (mat_worlds[name].to_3x3() @ fe_local.normal).normalized()
-                        n_other = (mat_worlds[neighbor_name].to_3x3() @ fe_other.normal).normalized()
-                        print(
-                            f"[flip_orientations]    Нормаль локальная: {n_local}, нормаль соседа: {-n_other}, dot = {n_local.dot(-n_other)}, thr = {cos_th}")
-                        if n_local.dot(-n_other) < cos_th:
-                            print(f"[flip_orientations]    Нормали не противоположны, заносим {name} и {neighbor_name}")
+                        if self._check_orientation(match, meshes[name], meshes[neighbor_name], mat_worlds[name],
+                                                   mat_worlds[neighbor_name], NORMAL_ANGLE_THRESHOLD):
                             meshes_to_flip.append(name)
                             meshes_to_flip.append(neighbor_name)
-                            added_matches.append(gm)
+                            added_matches.append(match)
                             break
-                        else:
-                            print(
-                                f"[flip_orientations]  Для меша '{name}' нет используемых соединений, требующих флипа")
-                            continue
-
-            print(f"[flip_orientations]!!!!!!!!!Проход закончен, список для флипа {meshes_to_flip}")
 
             counter = Counter(meshes_to_flip)
             if counter:
@@ -107,13 +82,11 @@ class GeometryBuilder:
             else:
                 break
 
-            print(f"[flip_orientations]!!!!!!!!!Самый частый элемент {most_common_element}, поворачиваем его")
-
-            match = [m for m in network.matches if m.mesh2 == most_common_element][0]
+            inverted_match = [m for m in network.matches if m.mesh2 == most_common_element][0]
 
             fe_local = meshes[most_common_element].faces[
-                match.indices[1]] if match.match_type == MatchType.FACE else meshes[most_common_element].edges[
-                match.indices[1]]
+                inverted_match.indices[1]] if inverted_match.match_type == MatchType.FACE else meshes[most_common_element].edges[
+                inverted_match.indices[1]]
             n_local = (mat_worlds[most_common_element].to_3x3() @ fe_local.normal).normalized()
             center = sum((mat_worlds[most_common_element] @ Vector(v) for v in fe_local.vertices), Vector()) / len(
                 fe_local.vertices)
@@ -125,13 +98,42 @@ class GeometryBuilder:
 
 
             flipped_meshes.add(most_common_element)
-            print(f"[flip_orientations]!!!!!!!!!Меш '{most_common_element}' флипанут на 180° вокруг нормали {n_local}")
 
-            for match in [m for m in network.matches if m.mesh1 == most_common_element]:
-                mat_worlds[match.mesh2] = self._find_connection_matrix(match, meshes[match.mesh2], meshes[match.mesh1], mat_worlds[match.mesh2], mat_worlds[match.mesh1])
+            for inverted_match in [m for m in network.matches if m.mesh1 == most_common_element]:
+                mat_worlds[inverted_match.mesh2] = self._find_connection_matrix(inverted_match, meshes[inverted_match.mesh2], meshes[inverted_match.mesh1], mat_worlds[inverted_match.mesh2], mat_worlds[inverted_match.mesh1])
+
+        base_fixed = False
+        for neighbor_name, match_list in graph.connections.get(base_mesh, {}).items():
+            if base_fixed:
+                break
+
+            for match in match_list:
+                if self._check_orientation(match, meshes[base_mesh], meshes[neighbor_name], mat_worlds[base_mesh],
+                                           mat_worlds[neighbor_name], NORMAL_ANGLE_THRESHOLD):
+                    inverted_base_connection = network.matches[0].inverted
+                    mat_worlds[base_mesh] = self._find_connection_matrix(inverted_base_connection,
+                                                                                    meshes[inverted_base_connection.mesh2],
+                                                                                    meshes[inverted_base_connection.mesh1],
+                                                                                    mat_worlds[inverted_base_connection.mesh2],
+                                                                                    mat_worlds[inverted_base_connection.mesh1])
+                    base_fixed = True
+                    break
 
 
-        print("[flip_orientations] Завершение проверки ориентаций")
+    def _check_orientation(self, match: GraphMatch, src_mesh: Mesh, dst_mesh: Mesh, src_mesh_world: Matrix, dst_mesh_world: Matrix, threshold) -> bool:
+        cos_th = math.cos(threshold)
+
+        is_src = (src_mesh == match.mesh2)
+        idx_local, idx_other = (match.indices[1], match.indices[0]) if is_src else (match.indices[0],
+                                                                              match.indices[1])
+        fe_local = src_mesh.faces[idx_local] if match.match_type == MatchType.FACE else \
+            src_mesh.edges[idx_local]
+        fe_other = dst_mesh.faces[idx_other] if match.match_type == MatchType.FACE else \
+            dst_mesh.edges[idx_other]
+        n_local = (src_mesh_world.to_3x3() @ fe_local.normal).normalized()
+        n_other = (dst_mesh_world.to_3x3() @ fe_other.normal).normalized()
+
+        return n_local.dot(-n_other) < cos_th
 
 
     def _find_connection_matrix(self, match: GraphMatch, src_mesh: Mesh, dst_mesh: Mesh, src_mesh_world: Matrix, dst_mesh_world: Matrix) -> Matrix:
