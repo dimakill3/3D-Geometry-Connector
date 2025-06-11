@@ -12,7 +12,7 @@ class GeometryConnector:
     def __init__(self):
         scene = bpy.context.scene
 
-        self.connected_edge_angle_threshold = scene.connected_edge_angle_threshold
+        self.connected_angle_threshold = scene.connected_angle_threshold
         self.area_threshold = scene.face_area_threshold
         self.edge_length_threshold = scene.edge_length_threshold
 
@@ -131,7 +131,7 @@ class GeometryConnector:
     # Сравнение нормалей граней с учётом выравнивания совпавших рёбер
     def _compare_normals(self, f1: Face, f2: Face, matching_edges: List[Tuple[Edge, Edge]]) -> bool:
         # Косинус порогового угла
-        cos_th = math.cos(self.connected_edge_angle_threshold)
+        cos_th = math.cos(self.connected_angle_threshold)
 
         # Собираем направляющие векторы по рёбрам
         v1_list: List[Vector] = []

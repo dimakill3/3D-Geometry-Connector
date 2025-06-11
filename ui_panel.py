@@ -182,7 +182,7 @@ def show_another_network(idx : int) -> bool:
 DEFAULT_COPLANAR_ANGLE_THRESHOLD = math.radians(1)  # Угол, до которого грани считаются компланарными
 DEFAULT_COPLANAR_DISTANCE_THRESHOLD = 0.0001  # Дистанция, до которой грани считаются компланарными
 DEFAULT_CURVATURE_THRESHOLD = 0.01  # Величина отклонения кривизны
-DEFAULT_CONNECTED_EDGE_ANGLE_THRESHOLD = math.radians(1)  # Минимальный итоговый коэффициент
+DEFAULT_CONNECTED_ANGLE_THRESHOLD = math.radians(1)  # Минимальный итоговый коэффициент
 DEFAULT_FACE_AREA_THRESHOLD = 0.00001  # Допустимая разница площадей граней для совпадения
 DEFAULT_EDGE_LENGTH_THRESHOLD = 0.00130  # Допустимая разница длин рёбер
 
@@ -214,13 +214,13 @@ def register():
         min=0,
         description="Deviation threshold for vertex curvature classification"
     )
-    scene.connected_edge_angle_threshold = FloatProperty(
+    scene.connected_angle_threshold = FloatProperty(
         subtype='ANGLE',
         precision=5,
-        name="Edge Angle Threshold",
-        default=DEFAULT_CONNECTED_EDGE_ANGLE_THRESHOLD,
+        name="Connected Angle Threshold",
+        default=DEFAULT_CONNECTED_ANGLE_THRESHOLD,
         min=0,
-        description="Angle threshold for connected edge matching"
+        description="Angle threshold for connected elements (face/edge) matching"
     )
     scene.face_area_threshold = FloatProperty(
         precision=5,
@@ -257,6 +257,6 @@ def unregister():
 
     # Выгрузка параметров панели
     for param in ("coplanar_angle_threshold", "coplanar_dist_threshold",
-              "curvature_threshold", "connected_edge_angle_threshold",
+              "curvature_threshold", "connected_angle_threshold",
               "area_threshold", "edge_threshold", "variant_index"):
         delattr(scene, param)
