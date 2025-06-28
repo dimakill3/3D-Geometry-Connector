@@ -66,6 +66,7 @@ def generate_networks(graph: MeshGraph):
 
     def dfs(current: List[GraphMatch], used_idx: Dict[str, Set[int]], used_meshes: Set[str],
             skipped_matches: Set[GraphMatch]):
+
         if used_meshes == nodes:
             if any(m.match_type == MatchType.FACE for m in current):
                 yield Network(matches=list(current))

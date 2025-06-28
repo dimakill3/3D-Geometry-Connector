@@ -1,4 +1,6 @@
 ﻿import math
+import time
+
 import bpy
 from typing import Dict
 from bpy.props import FloatProperty, IntProperty
@@ -35,7 +37,7 @@ class GeometryResolverNPanelBuilder(bpy.types.Panel):
             layout.prop(scene, "coplanar_angle_threshold")
             layout.prop(scene, "coplanar_distance_threshold")
             layout.prop(scene, "curvature_threshold")
-            layout.prop(scene, "connected_edge_angle_threshold")
+            layout.prop(scene, "connected_angle_threshold")
             layout.prop(scene, "face_area_threshold")
             layout.prop(scene, "edge_length_threshold")
             layout.separator()
@@ -61,6 +63,8 @@ class ResolveGeometryButton(bpy.types.Operator):
     def execute(self, context):
         global _cached_networks, _cached_meshes_dictionary, _generated_networks, _cached_sorted_graph
         scene = context.scene
+
+        start = time.perf_counter()
 
         meshes_list = GeometryCalculator().calculate()
         meshes_dictionary: Dict[str, Mesh] = {m.name: m for m in meshes_list}
@@ -89,6 +93,10 @@ class ResolveGeometryButton(bpy.types.Operator):
         scene.network_variant_index = 0
 
         result = show_another_network(scene.network_variant_index)
+
+        end = time.perf_counter()
+
+        print(f"Время выполнения: {end - start:.6f} сек")
 
         if result:
             return {'FINISHED'}

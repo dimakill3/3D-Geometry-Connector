@@ -9,12 +9,6 @@ from mathutils import Matrix
 
 
 class GeometryBuilder:
-    def __init__(self):
-        scene = bpy.context.scene
-
-        self.connected_angle_threshold = scene.connected_angle_threshold
-        self.area_threshold = scene.face_area_threshold
-        self.edge_length_threshold = scene.edge_length_threshold
 
     def assemble_network(self, network: Network, meshes: Dict[str, Mesh], graph: MeshGraph) -> Dict[str, Matrix]:
         # Кэшируем все исходные мировые матрицы
